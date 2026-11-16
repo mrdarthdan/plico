@@ -4,6 +4,8 @@ import {
 } from '../../lib/planner'
 import type { PlannedMeal, Recipe, Slot } from '../../lib/types'
 import { go } from '../../lib/useHash'
+import { pantryReturn } from '../../lib/plannerApi'
+import { CookSheet } from './CookSheet'
 import { BudgetMeter, type PlannerContext } from './Planner'
 
 export function WeekView({ ctx, rebuild }: { ctx: PlannerContext; rebuild: () => BuildResult }) {
@@ -67,7 +69,7 @@ export function WeekView({ ctx, rebuild }: { ctx: PlannerContext; rebuild: () =>
             {empty ? 'Plan this week' : 'Rebuild unlocked meals'}
           </button>
           {!empty && (
-            <button className="btn ghost" onClick={() => updatePlan({ ...plan, meals: plan.meals.filter((m) => m.locked) })}>
+            <button className="btn ghost" onClick={() => updatePlan({ ...plan, meals: plan.meals.filter((m) => m.locked || m.cooked) })}>
               Clear unlocked
             </button>
           )}
@@ -128,7 +130,23 @@ function MealCell({
   onChange: (m: PlannedMeal | null) => void
 }) {
   const [picking, setPicking] = useState(false)
+  const [cooking, setCooking] = useState(false)
+  const [undoing, setUndoing] = useState(false)
   const recipe = meal?.recipe_id ? byId.get(meal.recipe_id) : undefined
+
+  const undoCooked = async () => {
+    if (!meal) return
+    setUndoing(true)
+    ctx.onError(null)
+    try {
+      await pantryReturn(meal.used ?? [])
+      onChange({ ...meal, cooked: false, used: undefined })
+      await ctx.reloadStock()
+    } catch (e) {
+      ctx.onError((e as Error).message)
+    }
+    setUndoing(false)
+  }
   const cost = recipe && meal && !meal.leftover ? mealCost(recipe, meal.batches, ctx.book, ctx.stock) : null
   const spare = recipe && meal && !meal.leftover ? leftoverServings(recipe, meal.batches, people) : 0
 
@@ -155,8 +173,12 @@ function MealCell({
     .sort((a, b) => a.c.cost - b.c.cost)
 
   return (
-    <div className={'meal' + (meal?.locked ? ' locked' : '')}>
-      <span className="meal-slot">{SLOT_LABEL[slot]}</span>
+    <div className={'meal' + (meal?.locked ? ' locked' : '') + (meal?.cooked ? ' cooked' : '')}>
+      {cooking && meal && recipe && <CookSheet ctx={ctx} meal={meal} recipe={recipe} onClose={() => setCooking(false)} />}
+      <span className="meal-slot">
+        {SLOT_LABEL[slot]}
+        {meal?.cooked && <span className="cooked-tag"> · cooked ✓</span>}
+      </span>
       <div className="meal-main">
         {picking ? (
           <select autoFocus aria-label={`Choose ${SLOT_LABEL[slot].toLowerCase()}`} defaultValue="" onChange={(e) => choose(e.target.value)} onBlur={() => setPicking(false)}>
@@ -193,7 +215,15 @@ function MealCell({
         ) : (
           <span className="meal-title muted">Nothing planned</span>
         )}
-        {!picking && cost && (
+        {!picking && meal?.cooked && (
+          <span className="meal-meta">
+            {meal.used?.length ? `took ${meal.used.length} item${meal.used.length === 1 ? '' : 's'} from the pantry · ` : ''}
+            <button className="link" disabled={undoing} onClick={undoCooked}>
+              Undo
+            </button>
+          </span>
+        )}
+        {!picking && !meal?.cooked && cost && (
           <span className="meal-meta">
             {money(cost.cost)}
             {cost.unknown ? ` + ${cost.unknown} unpriced` : ''}
@@ -204,6 +234,11 @@ function MealCell({
         )}
       </div>
       <div className="meal-actions">
+        {meal && recipe && !meal.leftover && !meal.cooked && !picking && (
+          <button className="icon-btn" title="Cooked it: take the ingredients out of the pantry" aria-label="Mark as cooked" onClick={() => setCooking(true)}>
+            ✓
+          </button>
+        )}
         {meal && (
           <button
             className={'icon-btn' + (meal.locked ? ' on' : '')}
@@ -215,9 +250,11 @@ function MealCell({
             {meal.locked ? '🔒' : '🔓'}
           </button>
         )}
-        <button className="icon-btn" title="Change this meal" aria-label="Change this meal" onClick={() => setPicking(true)}>
-          ✎
-        </button>
+        {!meal?.cooked && (
+          <button className="icon-btn" title="Change this meal" aria-label="Change this meal" onClick={() => setPicking(true)}>
+            ✎
+          </button>
+        )}
       </div>
     </div>
   )
