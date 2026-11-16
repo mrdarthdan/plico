@@ -226,7 +226,7 @@ export function shoppingList(
     const it = line.item
     if (it) {
       const short = Math.max(0, line.needed - line.onHand)
-      line.packages = Math.ceil(short / it.package_qty - 1e-6)
+      line.packages = Math.max(0, Math.ceil(short / it.package_qty - 1e-6))
       // Something was needed but couldn't be measured, and there's none on hand: assume one package.
       if (line.packages === 0 && unmeasured && line.onHand <= 0) line.packages = 1
       if (line.packages === 0) line.cost = 0
