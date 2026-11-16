@@ -99,3 +99,19 @@ reset role;
 \echo bad data (expect check violations)
 insert into plico.grocery_items(name, package_unit) values ('x', 'bushel');
 insert into plico.meal_plans(week_start, budget, household_size, meals) values ('2026-11-29', 1, 1, '{}');
+\echo == pantry (run after 20261117000000_pantry.sql)
+\echo editor stocks the pantry and links a barcode (expect 1 row each)
+set request.jwt.claim.sub='00000000-0000-0000-0000-000000000003'; set role authenticated;
+insert into plico.pantry(grocery_item_id, qty, unit, expires) select id, 4.5, 'lb', '2027-01-01' from plico.grocery_items where name = 'flour' returning qty, unit;
+insert into plico.barcodes(code, grocery_item_id, size_qty, size_unit) select '078742012315', id, 5, 'lb' from plico.grocery_items where name = 'flour' returning code;
+reset role;
+\echo viewer sees neither (expect 0, 0)
+set request.jwt.claim.sub='00000000-0000-0000-0000-000000000002'; set role authenticated;
+select count(*) from plico.pantry; select count(*) from plico.barcodes;
+reset role;
+\echo bad data (expect check violations)
+insert into plico.pantry(grocery_item_id, qty, unit) select id, -1, 'lb' from plico.grocery_items limit 1;
+insert into plico.barcodes(code, grocery_item_id) select 'abc', id from plico.grocery_items limit 1;
+\echo deleting the item removes its stock and barcodes (expect 0, 0)
+delete from plico.grocery_items where name = 'flour';
+select count(*) from plico.pantry; select count(*) from plico.barcodes;

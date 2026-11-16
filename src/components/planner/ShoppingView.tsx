@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { money, type ShoppingLine } from '../../lib/planner'
+import { addPantry } from '../../lib/plannerApi'
 import { amount } from '../../lib/units'
 import { go } from '../../lib/useHash'
 import { BudgetMeter, type PlannerContext } from './Planner'
@@ -9,7 +10,10 @@ export function ShoppingView({ ctx }: { ctx: PlannerContext }) {
   const { plan, list, updatePlan } = ctx
   const [label, setLabel] = useState('')
   const [cost, setCost] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [putAway, setPutAway] = useState<string | null>(null)
   const checked = new Set(plan.checked)
+  const stocked = new Set(plan.stocked)
 
   const toggle = (key: string, on: boolean) => {
     const next = new Set(checked)
@@ -19,6 +23,30 @@ export function ShoppingView({ ctx }: { ctx: PlannerContext }) {
   }
 
   const toBuy = list.lines.filter((l) => !l.staple)
+  // Ticked lines with something bought that hasn't gone into the pantry yet.
+  const toStock = toBuy.filter((l) => checked.has(l.key) && !stocked.has(l.key) && l.item && l.packages > 0)
+
+  const stockTicked = async () => {
+    setBusy(true)
+    ctx.onError(null)
+    try {
+      await addPantry(
+        toStock.map((l) => ({
+          grocery_item_id: l.item!.id,
+          qty: l.packages * l.item!.package_qty,
+          unit: l.item!.package_unit,
+          location: shelfFor(l.category),
+          expires: null,
+        })),
+      )
+      updatePlan({ ...plan, stocked: [...stocked, ...toStock.map((l) => l.key)] })
+      await ctx.reloadStock()
+      setPutAway(`Put ${toStock.length} item${toStock.length === 1 ? '' : 's'} in the pantry. Add use-by dates on the Pantry tab.`)
+    } catch (e) {
+      ctx.onError((e as Error).message)
+    }
+    setBusy(false)
+  }
   const staples = list.lines.filter((l) => l.staple)
   const categories = [...new Set(toBuy.map((l) => l.category))]
 
@@ -41,12 +69,18 @@ export function ShoppingView({ ctx }: { ctx: PlannerContext }) {
         <button className="btn ghost" onClick={() => window.print()}>
           Print list
         </button>
+        {toStock.length > 0 && (
+          <button className="btn" disabled={busy} onClick={stockTicked}>
+            Put {toStock.length} ticked item{toStock.length === 1 ? '' : 's'} in the pantry
+          </button>
+        )}
         {checked.size > 0 && (
           <button className="btn ghost" onClick={() => updatePlan({ ...plan, checked: [] })}>
             Untick all
           </button>
         )}
       </div>
+      {putAway && <p className="msg ok">{putAway}</p>}
 
       {categories.map((cat) => (
         <section key={cat}>
@@ -55,7 +89,7 @@ export function ShoppingView({ ctx }: { ctx: PlannerContext }) {
             {toBuy
               .filter((l) => l.category === cat)
               .map((l) => (
-                <Line key={l.key} line={l} checked={checked.has(l.key)} onToggle={(on) => toggle(l.key, on)} />
+                <Line key={l.key} line={l} checked={checked.has(l.key)} stocked={stocked.has(l.key)} onToggle={(on) => toggle(l.key, on)} />
               ))}
           </ul>
         </section>
@@ -111,7 +145,7 @@ export function ShoppingView({ ctx }: { ctx: PlannerContext }) {
           <div className="section-label">Pantry staples: check you have them</div>
           <ul className="shop">
             {staples.map((l) => (
-              <Line key={l.key} line={l} checked={checked.has(l.key)} onToggle={(on) => toggle(l.key, on)} />
+              <Line key={l.key} line={l} checked={checked.has(l.key)} stocked={false} onToggle={(on) => toggle(l.key, on)} />
             ))}
           </ul>
         </section>
@@ -120,11 +154,19 @@ export function ShoppingView({ ctx }: { ctx: PlannerContext }) {
   )
 }
 
-function Line({ line: l, checked, onToggle }: { line: ShoppingLine; checked: boolean; onToggle: (on: boolean) => void }) {
+function Line({
+  line: l, checked, stocked, onToggle,
+}: {
+  line: ShoppingLine
+  checked: boolean
+  stocked: boolean
+  onToggle: (on: boolean) => void
+}) {
   const it = l.item
   const size = it ? amount(it.package_qty, it.package_unit) : ''
+  const covered = !!it && !l.staple && l.packages === 0 && l.onHand > 0
   return (
-    <li className={checked ? 'done' : ''}>
+    <li className={checked || covered ? 'done' : ''}>
       <label className="shop-row">
         <input type="checkbox" checked={checked} onChange={(e) => onToggle(e.target.checked)} />
         <span className="shop-name">
@@ -132,8 +174,9 @@ function Line({ line: l, checked, onToggle }: { line: ShoppingLine; checked: boo
           {it && !l.staple && (
             <span className="shop-qty">
               {' '}
-              {l.packages} × {size}
-              {it.price != null ? ` @ ${money(it.price)}` : ''}
+              {covered ? 'covered by the pantry' : `${l.packages} × ${size}${it.price != null ? ` @ ${money(it.price)}` : ''}`}
+              {!covered && l.onHand > 0 ? ` · have ${amount(l.onHand, it.package_unit)}` : ''}
+              {stocked ? ' · in the pantry ✓' : ''}
             </span>
           )}
         </span>
@@ -171,4 +214,11 @@ export function problemText(l: ShoppingLine): string {
   if (l.problems.includes('no-price')) parts.push('a price')
   if (l.problems.includes('no-conversion')) parts.push(`a ${l.missingUnits.join('/')} conversion`)
   return parts.join(' and ')
+}
+
+/** Where a newly bought item probably goes. */
+export function shelfFor(category: string): string {
+  if (/frozen/i.test(category)) return 'Freezer'
+  if (/dairy|egg|meat|seafood|produce|deli/i.test(category)) return 'Fridge'
+  return 'Pantry'
 }

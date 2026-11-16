@@ -2,7 +2,7 @@
 // database decides who may do what (see docs/meal-planner.md).
 
 import { supabase } from './supabase'
-import type { GroceryItem, GroceryItemInput, MealPlan, PlannerSettings } from './types'
+import type { Barcode, GroceryItem, GroceryItemInput, MealPlan, PantryRow, PlannerSettings } from './types'
 
 function fail(message: string): never {
   if (/row-level security|permission denied/i.test(message)) {
@@ -74,7 +74,7 @@ export async function deleteGroceryItem(id: number) {
 export async function loadPlan(weekStart: string): Promise<MealPlan | null> {
   const { data, error } = await supabase
     .from('meal_plans')
-    .select('week_start, budget, household_size, meals, checked, extras')
+    .select('week_start, budget, household_size, meals, checked, extras, stocked')
     .eq('week_start', weekStart)
     .maybeSingle()
   if (error) fail(error.message)
@@ -94,5 +94,45 @@ export async function recentRecipeIds(weekStarts: string[]): Promise<Set<string>
 
 export async function savePlan(plan: MealPlan) {
   const { error } = await supabase.from('meal_plans').upsert(plan, { onConflict: 'week_start' })
+  if (error) fail(error.message)
+}
+
+// ---- pantry ----
+
+export async function loadPantry(): Promise<PantryRow[]> {
+  const { data, error } = await supabase
+    .from('pantry')
+    .select('id, grocery_item_id, qty, unit, location, expires')
+    .order('expires', { ascending: true, nullsFirst: false })
+  if (error) fail(error.message)
+  return (data ?? []).map((r: Record<string, unknown>) => ({ ...(r as unknown as PantryRow), qty: Number(r.qty) }))
+}
+
+export async function addPantry(rows: Omit<PantryRow, 'id'>[]) {
+  if (!rows.length) return
+  const { error } = await supabase.from('pantry').insert(rows)
+  if (error) fail(error.message)
+}
+
+export async function updatePantry(id: number, patch: Partial<Omit<PantryRow, 'id'>>) {
+  const { error } = await supabase.from('pantry').update(patch).eq('id', id)
+  if (error) fail(error.message)
+}
+
+export async function deletePantry(id: number) {
+  const { error } = await supabase.from('pantry').delete().eq('id', id)
+  if (error) fail(error.message)
+}
+
+export async function loadBarcodes(): Promise<Barcode[]> {
+  const { data, error } = await supabase
+    .from('barcodes')
+    .select('code, grocery_item_id, product_name, brand, size_qty, size_unit')
+  if (error) fail(error.message)
+  return (data ?? []).map((r: Record<string, unknown>) => ({ ...(r as unknown as Barcode), size_qty: num(r.size_qty) }))
+}
+
+export async function saveBarcode(b: Barcode) {
+  const { error } = await supabase.from('barcodes').upsert(b, { onConflict: 'code' })
   if (error) fail(error.message)
 }
