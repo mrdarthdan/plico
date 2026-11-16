@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { money, type ShoppingLine } from '../../lib/planner'
+import { money, today, type ShoppingLine } from '../../lib/planner'
 import { addPantry } from '../../lib/plannerApi'
 import { amount } from '../../lib/units'
 import { go } from '../../lib/useHash'
@@ -177,6 +177,9 @@ function Line({
               {covered ? 'covered by the pantry' : `${l.packages} × ${size}${it.price != null ? ` @ ${money(it.price)}` : ''}`}
               {!covered && l.onHand > 0 ? ` · have ${amount(l.onHand, it.package_unit)}` : ''}
               {stocked ? ' · in the pantry ✓' : ''}
+              {!covered && it.price_source === 'kroger' && it.kroger_promo && it.kroger_promo_ends && it.kroger_promo_ends >= today()
+                ? ` · on sale through ${new Date(it.kroger_promo_ends + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                : ''}
             </span>
           )}
         </span>

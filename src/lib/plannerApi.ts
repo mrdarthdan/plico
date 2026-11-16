@@ -17,7 +17,7 @@ const num = (v: unknown) => (v == null ? null : Number(v))
 export async function loadPlannerSettings(): Promise<PlannerSettings> {
   const { data, error } = await supabase
     .from('planner_settings')
-    .select('weekly_budget, household_size, week_starts_on, slots, ignored')
+    .select('weekly_budget, household_size, week_starts_on, slots, ignored, kroger_location_id, kroger_store')
     .eq('id', 1)
     .maybeSingle()
   if (error) fail(error.message)
@@ -40,6 +40,8 @@ function toItem(row: Record<string, unknown>): GroceryItem {
     ...(row as unknown as GroceryItem),
     package_qty: Number(row.package_qty),
     price: num(row.price),
+    kroger_regular: num(row.kroger_regular),
+    kroger_promo: num(row.kroger_promo),
   }
 }
 

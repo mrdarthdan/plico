@@ -115,3 +115,11 @@ insert into plico.barcodes(code, grocery_item_id) select 'abc', id from plico.gr
 \echo deleting the item removes its stock and barcodes (expect 0, 0)
 delete from plico.grocery_items where name = 'flour';
 select count(*) from plico.pantry; select count(*) from plico.barcodes;
+\echo == kroger (run after 20261118000000_kroger.sql)
+\echo editor picks a store and links an item (expect 1 row each)
+set request.jwt.claim.sub='00000000-0000-0000-0000-000000000003'; set role authenticated;
+update plico.planner_settings set kroger_location_id = '66000622', kroger_store = 'Fry''s Marketplace' returning kroger_location_id;
+insert into plico.grocery_items(name, kroger_product_id, kroger_regular, kroger_promo) values ('oats', '0001111085012', 4.49, 3.99) returning kroger_product_id;
+\echo bad product id (expect check violation)
+update plico.grocery_items set kroger_product_id = 'abc' where name = 'oats';
+reset role;

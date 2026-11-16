@@ -6,8 +6,8 @@ priced shopping list. It is off until an admin turns it on.
 
 ## Setting it up
 
-1. Run `supabase/migrations/20261116000000_meal_planner.sql` and then
-   `20261117000000_pantry.sql`, the same way as the other migrations (see
+1. Run `supabase/migrations/20261116000000_meal_planner.sql`,
+   `20261117000000_pantry.sql` and `20261118000000_kroger.sql`, the same way as the other migrations (see
    [supabase.md](supabase.md)). They only add to the `plico` schema; recipes
    and accounts are untouched.
 2. Sign in as an admin, open **Admin → Meal planner**, and tick
@@ -54,6 +54,32 @@ day's lunch. If the week's shopping comes out over budget, it rebuilds,
 leaning harder on cost each time. Meals you choose by hand are locked and kept
 when you rebuild.
 
+## Store prices from Kroger (optional)
+
+Stores in the Kroger family (Kroger, Fry's, Smith's, King Soopers, Ralphs,
+Fred Meyer and others) publish product prices through Kroger's free
+developer API. To use them:
+
+1. Make a free account at [developer.kroger.com](https://developer.kroger.com)
+   and register an application for the **Production** environment with the
+   **Products** API. Copy its client ID and client secret.
+2. In the Supabase dashboard, under **Edge Functions → Secrets**, add
+   `KROGER_CLIENT_ID` and `KROGER_CLIENT_SECRET`.
+3. Deploy the function:
+   `supabase functions deploy kroger --no-verify-jwt`. (It checks the caller
+   itself: only meal planners can look prices up. Its one open action,
+   `status`, only says whether Kroger accepts the keys.)
+4. On the planner's **Prices** tab, find your store by ZIP code.
+
+Then **Find at the store** on any unpriced ingredient searches that store and
+makes the grocery item from the product you pick, with its size and price.
+**Match items to store products** walks through existing items one at a
+time, and **Refresh store prices** reprices every linked item in one go.
+Sale prices are used until their end date. A receipt price from the last 45
+days is kept over the store's price, since it's what you actually paid.
+
+The keys stay in Supabase: the browser only ever talks to the function.
+
 ## The pantry and barcodes
 
 The **Pantry** tab keeps what's on hand: an amount, where it's kept (pantry,
@@ -92,6 +118,10 @@ Ways to fill it:
 | `meal_plans` | One row per week (keyed by its first day): budget, people, the meals as JSON, ticked shopping lines, extra lines, lines put in the pantry |
 | `barcodes` | A scanned product: code, grocery item, product name, brand and size |
 | `pantry` | What's on hand: grocery item, amount and unit, where it's kept, use-by date |
+
+`planner_settings.kroger_location_id` is the chosen store; each grocery
+item's `kroger_*` columns hold its linked product and that product's latest
+regular and sale prices.
 
 `settings.planner_enabled` is the on/off switch. `plico.can_plan()` is true
 for editors and admins while it's on; every planner policy uses it.
