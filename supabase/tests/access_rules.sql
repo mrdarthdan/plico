@@ -70,3 +70,32 @@ reset role; select count(*) from plico.favorites;
 \echo signed out (expect permission denied)
 set request.jwt.claim.sub=''; set role anon; select count(*) from plico.favorites;
 reset role;
+\echo == meal planner (run after 20261116000000_meal_planner.sql)
+\echo planner off: even the admin sees no planner rows (expect 0, then RLS violation)
+set request.jwt.claim.sub='00000000-0000-0000-0000-000000000001'; set role authenticated;
+select count(*) from plico.planner_settings;
+insert into plico.grocery_items(name) values ('flour');
+\echo admin turns it on (expect true)
+update plico.settings set planner_enabled = true returning planner_enabled;
+insert into plico.grocery_items(name, package_qty, package_unit, price) values ('flour', 5, 'lb', 3.98) returning name;
+insert into plico.meal_plans(week_start, budget, household_size) values ('2026-11-15', 150, 4) returning updated_by;
+reset role;
+\echo editor (user 3 was promoted above) shares the household plan (expect 1, 1, 1 row updated)
+set request.jwt.claim.sub='00000000-0000-0000-0000-000000000003'; set role authenticated;
+select count(*) from plico.meal_plans; select count(*) from plico.grocery_items;
+update plico.planner_settings set weekly_budget = 175;
+\echo editor cannot turn the planner off (expect 0 rows)
+update plico.settings set planner_enabled = false; 
+reset role;
+\echo viewer sees nothing and writes nothing (expect 0, 0, RLS violation)
+set request.jwt.claim.sub='00000000-0000-0000-0000-000000000002'; set role authenticated;
+select plico.ensure_profile();
+select count(*) from plico.meal_plans; select count(*) from plico.grocery_items;
+insert into plico.meal_plans(week_start, budget, household_size) values ('2026-11-22', 1, 1);
+reset role;
+\echo signed out (expect permission denied)
+set request.jwt.claim.sub=''; set role anon; select count(*) from plico.meal_plans;
+reset role;
+\echo bad data (expect check violations)
+insert into plico.grocery_items(name, package_unit) values ('x', 'bushel');
+insert into plico.meal_plans(week_start, budget, household_size, meals) values ('2026-11-29', 1, 1, '{}');

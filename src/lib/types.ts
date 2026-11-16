@@ -45,6 +45,69 @@ export interface Settings {
   site_name: string
   tagline: string | null
   public_read: boolean
+  /** The meal planner module is turned on. */
+  planner_enabled?: boolean
+}
+
+// ---- meal planner ----
+
+export type Slot = 'breakfast' | 'lunch' | 'dinner'
+
+export interface SlotConfig {
+  on: boolean
+  /** Section ids that feed this meal; empty means guess from section names. */
+  sections: number[]
+}
+
+export interface PlannerSettings {
+  weekly_budget: number
+  household_size: number
+  /** 0 = Sunday, 1 = Monday */
+  week_starts_on: number
+  slots: Record<Slot, SlotConfig>
+  /** Ingredient names that never go on a shopping list. */
+  ignored: string[]
+}
+
+export interface GroceryItem {
+  id: number
+  name: string
+  category: string | null
+  package_qty: number
+  package_unit: string
+  price: number | null
+  price_source: 'manual' | 'receipt' | 'kroger' | null
+  price_updated_at: string | null
+  conversions: Record<string, number>
+  staple: boolean
+  aliases: string[]
+  upc: string | null
+}
+
+export type GroceryItemInput = Omit<GroceryItem, 'id' | 'price_updated_at'>
+
+export interface PlannedMeal {
+  /** 0-6 from the first day of the week */
+  day: number
+  slot: Slot
+  recipe_id: string | null
+  /** How many times the recipe is made; 0 for leftovers. */
+  batches: number
+  /** Kept as is when the week is rebuilt. */
+  locked: boolean
+  /** Eats the previous dinner's leftovers; costs nothing. */
+  leftover: boolean
+  /** Free text in place of a recipe, e.g. "Eating out". */
+  note: string | null
+}
+
+export interface MealPlan {
+  week_start: string
+  budget: number
+  household_size: number
+  meals: PlannedMeal[]
+  checked: string[]
+  extras: { label: string; cost: number | null }[]
 }
 export interface Profile {
   user_id: string

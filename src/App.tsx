@@ -8,6 +8,7 @@ import { go, useHash } from './lib/useHash'
 import { AccountBar } from './components/AccountBar'
 import { AccountPage, NewPasswordPage, ProfilePage } from './components/AccountPages'
 import { AdminPage } from './components/AdminPage'
+import { Planner } from './components/planner/Planner'
 import { IndexPage, type SectionFilter } from './components/IndexPage'
 import { RecipeForm } from './components/RecipeForm'
 import { RecipePage } from './components/RecipePage'
@@ -121,6 +122,7 @@ export function App() {
 
   const role = profile?.role ?? 'viewer'
   const canEdit = (role === 'editor' || role === 'admin') && !!data && !data.fromCache
+  const canPlan = canEdit && !!data?.settings.planner_enabled
 
   let page
   if (recovery) {
@@ -152,6 +154,25 @@ export function App() {
     page = <ProfilePage user={user} profile={profile} onSaved={refreshAuth} />
   } else if (route === 'admin') {
     page = <AdminPage data={data} isAdmin={role === 'admin'} myId={user?.id ?? null} reload={reload} />
+  } else if (route === 'planner' || route === 'planner-list' || route === 'planner-prices') {
+    page = canPlan ? (
+      <Planner
+        tab={route === 'planner' ? 'week' : route === 'planner-list' ? 'list' : 'prices'}
+        data={data}
+        favorites={favorites}
+      />
+    ) : (
+      <div className="panel">
+        <h1>Meal planner</h1>
+        <p className="lede">
+          {data.settings.planner_enabled
+            ? user
+              ? 'The meal planner is for editors and admins. Ask an admin to change your role.'
+              : 'Sign in to use the meal planner.'
+            : "The meal planner isn't turned on. An admin can turn it on from the Admin page."}
+        </p>
+      </div>
+    )
   } else if (route === 'new' || route.startsWith('edit-')) {
     const editing = route === 'new' ? null : data.recipes.find((r) => r.id === route.slice(5)) ?? null
     page = (
@@ -201,7 +222,7 @@ export function App() {
 
   return (
     <Shell>
-      <AccountBar user={user} role={role} />
+      <AccountBar user={user} role={role} canPlan={canPlan} />
       {page}
     </Shell>
   )

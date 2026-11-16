@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import type { Role } from '../lib/types'
 import { go } from '../lib/useHash'
 
-export function AccountBar({ user, role }: { user: User | null; role: Role }) {
+export function AccountBar({ user, role, canPlan }: { user: User | null; role: Role; canPlan: boolean }) {
   if (!user) {
     return (
       <div className="acct">
@@ -19,6 +19,11 @@ export function AccountBar({ user, role }: { user: User | null; role: Role }) {
         {user.email}
         {role === 'viewer' ? ' · view only' : role === 'admin' ? ' · admin' : ''}
       </span>
+      {canPlan && (
+        <button className="link" onClick={() => go('planner')}>
+          Meal planner
+        </button>
+      )}
       <button className="link" onClick={() => go('profile')}>
         Profile
       </button>

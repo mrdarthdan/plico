@@ -4,6 +4,7 @@ import {
 } from '../lib/api'
 import type { RecipeBoxData, Member, Role, Section } from '../lib/types'
 import { go } from '../lib/useHash'
+import { PlannerAdmin } from './planner/PlannerAdmin'
 
 interface Props {
   data: RecipeBoxData
@@ -57,6 +58,7 @@ export function AdminPage({ data, isAdmin, myId, reload }: Props) {
         <Members myId={myId} onError={setError} />
         <Sections sections={data.sections} recipes={data.recipes} run={run} />
         <SiteSettings data={data} run={run} />
+        <PlannerAdmin data={data} run={run} />
         <Export data={data} />
       </div>
     </>
