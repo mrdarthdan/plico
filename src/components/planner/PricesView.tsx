@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { itemFromProduct, updateFromProduct } from '../../lib/kroger'
 import { batchesFor, money, shoppingList, slotSections, SLOTS, today, type ShoppingLine } from '../../lib/planner'
-import { addGroceryItems, deleteGroceryItem, saveGroceryItem, savePlannerSettings } from '../../lib/plannerApi'
+import { addGroceryItems, deleteGroceryItem, deleteGroceryItems, saveGroceryItem, savePlannerSettings } from '../../lib/plannerApi'
 import type { GroceryItem, GroceryItemInput, PlannedMeal } from '../../lib/types'
 import { amount, PACKAGE_UNITS } from '../../lib/units'
 import { KrogerPanel, KrogerPicker } from './Kroger'
@@ -46,6 +46,7 @@ export function PricesView({ ctx }: { ctx: PlannerContext }) {
   const [showAll, setShowAll] = useState(false)
   const [busy, setBusy] = useState(false)
   const [atStore, setAtStore] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
   const storeId = settings.kroger_location_id
 
   // Everything the planner could choose from, made once each, to price ahead.
@@ -87,6 +88,29 @@ export function PricesView({ ctx }: { ctx: PlannerContext }) {
     })
 
   const visibleItems = items.filter((i) => !filter || i.name.toLowerCase().includes(filter.toLowerCase()))
+  // Only items still on screen count as selected, so a filter or a deletion can't leave hidden ones ticked.
+  const picked = visibleItems.filter((i) => selected.has(i.id))
+  const allPicked = visibleItems.length > 0 && picked.length === visibleItems.length
+  const select = (ids: number[], on: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (on) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  const deletePicked = () => {
+    const stocked = new Set(ctx.pantry.map((r) => r.grocery_item_id))
+    const withStock = picked.filter((i) => stocked.has(i.id)).length
+    const message =
+      `Delete ${picked.length} grocery item${picked.length === 1 ? '' : 's'}?` +
+      (withStock ? `\n\n${withStock} of them ${withStock === 1 ? 'has' : 'have'} pantry stock, which will be removed too.` : '') +
+      "\n\nTheir saved barcodes are removed as well. This can't be undone."
+    if (!window.confirm(message)) return
+    const ids = picked.map((i) => i.id)
+    void run(() => deleteGroceryItems(ids)).then((ok) => ok && select(ids, false))
+  }
   const used = new Set(plan ? ctx.list.lines.map((l) => l.item?.id) : [])
 
   return (
@@ -169,8 +193,8 @@ export function PricesView({ ctx }: { ctx: PlannerContext }) {
       <section className="admin-block">
         <h2>Grocery items</h2>
         <p className="hint">
-          What you buy, the package you buy it in, and what that package costs. Kroger price lookups come in a later
-          update; for now, type prices from a receipt or the store's site.
+          What you buy, the package you buy it in, and what that package costs. Prices come from the store, your
+          receipts, or what you type in.
         </p>
         <div className="inline-form">
           <input type="search" placeholder="Find an item" aria-label="Find an item" value={filter} onChange={(e) => setFilter(e.target.value)} />
@@ -189,12 +213,46 @@ export function PricesView({ ctx }: { ctx: PlannerContext }) {
             </button>
           )}
         </div>
+        {visibleItems.length > 0 && (
+          <div className="bulk-bar">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={allPicked}
+                ref={(el) => {
+                  if (el) el.indeterminate = picked.length > 0 && !allPicked
+                }}
+                onChange={(e) => select(visibleItems.map((i) => i.id), e.target.checked)}
+              />
+              <span>{filter ? `Select all ${visibleItems.length} shown` : `Select all ${visibleItems.length}`}</span>
+            </label>
+            <button className="link" onClick={() => select(visibleItems.filter((i) => i.staple).map((i) => i.id), true)}>
+              Select staples
+            </button>
+            <button className="link" onClick={() => select(visibleItems.filter((i) => i.price == null && !i.staple).map((i) => i.id), true)}>
+              Select unpriced
+            </button>
+            {picked.length > 0 && (
+              <>
+                <button className="link" onClick={() => setSelected(new Set())}>
+                  Clear selection
+                </button>
+                <button className="btn danger solid" disabled={busy} onClick={deletePicked}>
+                  Delete {picked.length} selected
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {visibleItems.length === 0 ? (
-          <p className="empty">No grocery items yet.</p>
+          <p className="empty">{items.length ? 'Nothing matches.' : 'No grocery items yet.'}</p>
         ) : (
-          <table className="table">
+          <table className="table items-table">
             <thead>
               <tr>
+                <th className="pick">
+                  <span className="sr-only">Select</span>
+                </th>
                 <th>Item</th>
                 <th>Package</th>
                 <th>Price</th>
@@ -203,7 +261,15 @@ export function PricesView({ ctx }: { ctx: PlannerContext }) {
             </thead>
             <tbody>
               {visibleItems.map((it) => (
-                <tr key={it.id}>
+                <tr key={it.id} className={selected.has(it.id) ? 'picked' : ''}>
+                  <td className="pick">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${it.name}`}
+                      checked={selected.has(it.id)}
+                      onChange={(e) => select([it.id], e.target.checked)}
+                    />
+                  </td>
                   <td>
                     {it.name}
                     {it.staple && <span className="tag"> staple</span>}

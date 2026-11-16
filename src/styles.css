@@ -243,3 +243,12 @@ input.narrow { width: 90px; flex: none; min-width: 0; }
 .ktag .badge { margin-left: 0; }
 .fix-picker { flex-basis: 100%; }
 @media (max-width: 560px) { .kresults li { grid-template-columns: 40px minmax(0, 1fr); } .kresults li .btn { grid-column: 2; justify-self: start; } .kresults img, .kimg { width: 40px; height: 40px; } }
+
+/* bulk selection */
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2; }
+.bulk-bar .btn { margin-left: auto; padding: 7px 12px; }
+.items-table td.pick, .items-table th.pick { width: 32px; }
+.items-table td.pick input { width: 18px; height: 18px; padding: 0; accent-color: var(--chili); }
+.items-table tr.picked td { background: var(--chili-soft); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 560px) { .items-table tr { grid-template-columns: 28px minmax(0, 1fr); } .items-table td:not(.pick) { grid-column: 2; } .items-table td.pick { grid-row: 1 / span 4; } }
