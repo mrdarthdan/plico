@@ -123,3 +123,30 @@ insert into plico.grocery_items(name, kroger_product_id, kroger_regular, kroger_
 \echo bad product id (expect check violation)
 update plico.grocery_items set kroger_product_id = 'abc' where name = 'oats';
 reset role;
+\echo == cooking and history (run after 20261119000000_cooking_history.sql)
+set request.jwt.claim.sub='00000000-0000-0000-0000-000000000003'; set role authenticated;
+insert into plico.grocery_items(name, package_qty, package_unit, price, price_source) values ('rice', 2, 'lb', 2.50, 'manual');
+update plico.grocery_items set price = 2.75, price_source = 'kroger' where name = 'rice';
+update plico.grocery_items set category = 'Pantry' where name = 'rice';
+\echo history: two rows, the category change adds none (expect 2.50, 2.75)
+select h.price from plico.price_history h join plico.grocery_items g on g.id = h.grocery_item_id where g.name = 'rice' order by h.id;
+\echo editor cannot write history directly (expect RLS violation or permission denied)
+insert into plico.price_history(grocery_item_id, price, package_qty, package_unit) select id, 0.01, 1, 'lb' from plico.grocery_items where name = 'rice';
+insert into plico.pantry(grocery_item_id, qty, unit, expires) select id, 2, 'lb', '2026-12-01' from plico.grocery_items where name = 'rice';
+insert into plico.pantry(grocery_item_id, qty, unit) select id, 1, 'lb' from plico.grocery_items where name = 'rice';
+\echo take 2.5 lb across two lots: first lot used up, second left with 0.5 (expect 1 row, 0.500)
+select plico.pantry_take((select jsonb_agg(jsonb_build_object('lot', id, 'qty', q)) from (select id, case when expires is not null then 2 else 0.5 end q from plico.pantry p where grocery_item_id = (select id from plico.grocery_items where name = 'rice')) t));
+select qty from plico.pantry where grocery_item_id = (select id from plico.grocery_items where name = 'rice');
+\echo negative take refused (expect error)
+select plico.pantry_take('[{"lot": 1, "qty": -5}]');
+\echo give back: the used-up lot is recreated with its date (expect 2 rows: 2.000 with 2026-12-01, 1.000)
+select plico.pantry_return(jsonb_build_array(
+  jsonb_build_object('lot', 999999, 'qty', 2, 'item', (select id from plico.grocery_items where name = 'rice'), 'unit', 'lb', 'location', 'Pantry', 'expires', '2026-12-01'),
+  jsonb_build_object('lot', (select id from plico.pantry where grocery_item_id = (select id from plico.grocery_items where name = 'rice')), 'qty', 0.5)));
+select qty, expires from plico.pantry where grocery_item_id = (select id from plico.grocery_items where name = 'rice') order by qty desc;
+reset role;
+\echo viewer cannot take from the pantry or read history (expect error, 0)
+set request.jwt.claim.sub='00000000-0000-0000-0000-000000000002'; set role authenticated;
+select plico.pantry_take('[]');
+select count(*) from plico.price_history;
+reset role;

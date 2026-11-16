@@ -174,7 +174,8 @@ export function shoppingList(
 ): ShoppingList {
   const lines = new Map<string, ShoppingLine & { unmeasured: boolean }>()
   for (const m of meals) {
-    if (m.leftover || !m.recipe_id) continue
+    // Cooked meals have already taken what they needed from the pantry.
+    if (m.leftover || m.cooked || !m.recipe_id) continue
     const r = recipes.get(m.recipe_id)
     if (!r) continue
     for (const n of needsOf(r, m.batches, book)) {
@@ -333,7 +334,8 @@ function fillWeek(input: BuildInput, costLean: number): PlannedMeal[] {
   const cooked = on.reduce((n, s) => n + (s === 'lunch' && on.includes('dinner') ? 3.5 : 7), 0)
   const target = Math.max(input.budget / Math.max(cooked, 1), 0.01)
 
-  const locked = new Map(input.existing.filter((m) => m.locked).map((m) => [m.day + m.slot, m]))
+  // Locked and already-cooked meals stay as they are.
+  const locked = new Map(input.existing.filter((m) => m.locked || m.cooked).map((m) => [m.day + m.slot, m]))
   const used = new Map<string, number>()
   for (const m of locked.values()) if (m.recipe_id && !m.leftover) used.set(m.recipe_id, (used.get(m.recipe_id) ?? 0) + 1)
 

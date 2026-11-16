@@ -182,3 +182,18 @@ describe('stock', () => {
     expect(c.expiring).toBe(1)
   })
 })
+
+describe('cooked meals', () => {
+  it('stay put on a rebuild and leave the shopping list', () => {
+    const book = makePriceBook([item(1, 'steak', { price: 20 }), item(2, 'bean', { price: 1 }), item(3, 'oat', { price: 2 })], [])
+    const recipes = [recipe('oatmeal', 1, 4, [[1, '', 'oats']]), recipe('steak-dinner', 2, 4, [[2, '', 'steak']]), recipe('bean-pot', 2, 4, [[2, 'cans', 'beans']])]
+    const cooked = { day: 0, slot: 'dinner' as const, recipe_id: 'steak-dinner', batches: 1, locked: false, leftover: false, note: null, cooked: true }
+    const r = buildWeek({
+      recipes, sections: [], settings, budget: 40, people: 4, existing: [cooked], favorites: new Set<string>(),
+      recent: new Set<string>(), book, seed: 3,
+    })
+    expect(r.meals.find((m) => m.day === 0 && m.slot === 'dinner')).toEqual(cooked)
+    const list = shoppingList([cooked], new Map(recipes.map((x) => [x.id, x])), book)
+    expect(list.lines).toHaveLength(0)
+  })
+})

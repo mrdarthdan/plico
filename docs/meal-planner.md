@@ -7,7 +7,8 @@ priced shopping list. It is off until an admin turns it on.
 ## Setting it up
 
 1. Run `supabase/migrations/20261116000000_meal_planner.sql`,
-   `20261117000000_pantry.sql` and `20261118000000_kroger.sql`, the same way as the other migrations (see
+   `20261117000000_pantry.sql`, `20261118000000_kroger.sql` and
+   `20261119000000_cooking_history.sql`, the same way as the other migrations (see
    [supabase.md](supabase.md)). They only add to the `plico` schema; recipes
    and accounts are untouched.
 2. Sign in as an admin, open **Admin → Meal planner**, and tick
@@ -107,7 +108,31 @@ Ways to fill it:
 - **From the shopping list:** tick what you bought, then **Put ticked items in
   the pantry**. Each line goes in once.
 
-**Use some**, **Edit** and **Used up** keep amounts current by hand.
+**Use some**, **Edit** and **Used up** keep amounts current by hand, and
+**Count the pantry** lists every lot with a box for what's really there, so a
+quick walk along the shelves puts the counts right. Only changed amounts are
+saved; 0 removes a lot.
+
+## Cooking
+
+The **✓** on a planned meal marks it cooked and takes its ingredients out of
+the pantry. A sheet first shows what will come out of which lot, oldest
+use-by date first, converted into the units each lot is kept in, and what the
+pantry was short of. Change how many times the recipe was made, untick
+anything you didn't use, then confirm. The change is made in the database in
+one step (`plico.pantry_take`), so it can't half-happen.
+
+A cooked meal is kept when the week is rebuilt and drops off the shopping
+list, since it has already taken what it needed. **Undo** puts everything
+back (`plico.pantry_return`), recreating any lot that ran out with its
+location and use-by date.
+
+## Price history
+
+Every time an item's price, or the package it's priced for, changes, a
+database trigger records it in `price_history`, with where the price came
+from (the store, a receipt, or typed in). Editing an item shows its history
+and how much it has moved per unit since the first record.
 
 ## Data
 
@@ -118,6 +143,7 @@ Ways to fill it:
 | `meal_plans` | One row per week (keyed by its first day): budget, people, the meals as JSON, ticked shopping lines, extra lines, lines put in the pantry |
 | `barcodes` | A scanned product: code, grocery item, product name, brand and size |
 | `pantry` | What's on hand: grocery item, amount and unit, where it's kept, use-by date |
+| `price_history` | Each price an item has had: price, package, source, when. Written only by a trigger |
 
 `planner_settings.kroger_location_id` is the chosen store; each grocery
 item's `kroger_*` columns hold its linked product and that product's latest

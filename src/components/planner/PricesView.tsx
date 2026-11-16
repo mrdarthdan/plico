@@ -1,7 +1,9 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { itemFromProduct, updateFromProduct } from '../../lib/kroger'
 import { batchesFor, money, shoppingList, slotSections, SLOTS, today, type ShoppingLine } from '../../lib/planner'
-import { addGroceryItems, deleteGroceryItem, deleteGroceryItems, saveGroceryItem, savePlannerSettings } from '../../lib/plannerApi'
+import {
+  addGroceryItems, deleteGroceryItem, deleteGroceryItems, loadPriceHistory, saveGroceryItem, savePlannerSettings, type PricePoint,
+} from '../../lib/plannerApi'
 import type { GroceryItem, GroceryItemInput, PlannedMeal } from '../../lib/types'
 import { amount, PACKAGE_UNITS } from '../../lib/units'
 import { KrogerPanel, KrogerPicker } from './Kroger'
@@ -503,6 +505,8 @@ function ItemEditor({
         </button>
       </div>
 
+      {draft.id != null && <PriceHistory itemId={draft.id} />}
+
       <div className="field">
         <label htmlFor="g-alias">Also called (comma-separated)</label>
         <input id="g-alias" value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="all purpose flour, ap flour" />
@@ -516,5 +520,53 @@ function ItemEditor({
         </button>
       </div>
     </form>
+  )
+}
+
+const SOURCE: Record<string, string> = { kroger: 'store', receipt: 'receipt', manual: 'typed' }
+
+/** Every price this item has had, newest first, with the change per unit. */
+function PriceHistory({ itemId }: { itemId: number }) {
+  const [points, setPoints] = useState<PricePoint[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    loadPriceHistory(itemId)
+      .then(setPoints)
+      .catch((e: Error) => setError(e.message))
+  }, [itemId])
+
+  if (error) return <p className="hint">Price history didn't load: {error}</p>
+  if (!points) return <p className="hint">Loading price history…</p>
+  if (points.length === 0) return <p className="hint">No price history yet. Each price change is recorded from now on.</p>
+
+  // Compare per unit, so a change of package size doesn't look like a price change.
+  const perUnit = (p: PricePoint) => p.price / p.package_qty
+  const newest = points[0]
+  const oldest = points[points.length - 1]
+  const change = points.length > 1 && perUnit(oldest) > 0 ? (perUnit(newest) / perUnit(oldest) - 1) * 100 : null
+
+  return (
+    <div className="field">
+      <label>Price history</label>
+      {change != null && Math.abs(change) >= 0.5 && (
+        <p className={'hint ' + (change > 0 ? 'up' : 'down')}>
+          {change > 0 ? '▲' : '▼'} {Math.abs(change).toFixed(0)}% since{' '}
+          {new Date(oldest.recorded_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+        </p>
+      )}
+      <table className="table history">
+        <tbody>
+          {points.map((p, i) => (
+            <tr key={i}>
+              <td>{new Date(p.recorded_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+              <td>{money(p.price)}</td>
+              <td>{amount(p.package_qty, p.package_unit)}</td>
+              <td className="hint">{SOURCE[p.source ?? ''] ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

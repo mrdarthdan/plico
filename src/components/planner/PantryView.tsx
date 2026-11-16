@@ -20,6 +20,7 @@ export function PantryView({ ctx }: { ctx: PlannerContext }) {
   const [receiving, setReceiving] = useState<Receiving | null>(null)
   const [filter, setFilter] = useState('')
   const [flash, setFlash] = useState<string | null>(null)
+  const [counting, setCounting] = useState(false)
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
 
   const scanned = (code: string) => {
@@ -48,6 +49,17 @@ export function PantryView({ ctx }: { ctx: PlannerContext }) {
     <>
       {scanning && <Scanner onCode={scanned} onClose={() => setScanning(false)} />}
 
+      {counting && (
+        <Recount
+          ctx={ctx}
+          onDone={(msg) => {
+            setCounting(false)
+            setFlash(msg)
+          }}
+        />
+      )}
+      {!counting && (
+      <>
       <div className="actions">
         <button className="btn" onClick={() => setScanning(true)}>
           📷 Scan to add
@@ -61,6 +73,18 @@ export function PantryView({ ctx }: { ctx: PlannerContext }) {
         >
           Add without scanning
         </button>
+        {pantry.length > 0 && (
+          <button
+            className="btn ghost"
+            onClick={() => {
+              setFlash(null)
+              setReceiving(null)
+              setCounting(true)
+            }}
+          >
+            Count the pantry
+          </button>
+        )}
       </div>
       {flash && <p className="msg ok">{flash}</p>}
 
@@ -115,7 +139,89 @@ export function PantryView({ ctx }: { ctx: PlannerContext }) {
           )
         })
       )}
+      </>
+      )}
     </>
+  )
+}
+
+/**
+ * Walk the shelves and type what's really there. Only changed amounts are
+ * saved; 0 removes the lot.
+ */
+function Recount({ ctx, onDone }: { ctx: PlannerContext; onDone: (msg: string | null) => void }) {
+  const itemById = new Map(ctx.items.map((i) => [i.id, i]))
+  const rows = ctx.pantry
+    .filter((r) => itemById.has(r.grocery_item_id))
+    .sort((a, b) => a.location.localeCompare(b.location) || itemById.get(a.grocery_item_id)!.name.localeCompare(itemById.get(b.grocery_item_id)!.name))
+  const [counts, setCounts] = useState<Record<number, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const changed = rows.filter((r) => counts[r.id] !== undefined && counts[r.id].trim() !== '' && Number(counts[r.id]) !== r.qty)
+  const bad = changed.some((r) => !(Number(counts[r.id]) >= 0))
+
+  const save = async () => {
+    if (bad) return setErr('Amounts must be 0 or more.')
+    setBusy(true)
+    setErr(null)
+    try {
+      const jobs = changed.map((r) => {
+        const n = Math.round(Number(counts[r.id]) * 1000) / 1000
+        return () => (n === 0 ? deletePantry(r.id) : updatePantry(r.id, { qty: n }))
+      })
+      for (let i = 0; i < jobs.length; i += 8) await Promise.all(jobs.slice(i, i + 8).map((j) => j()))
+      await ctx.reloadStock()
+      onDone(changed.length ? `Updated ${changed.length} amount${changed.length === 1 ? '' : 's'}.` : null)
+    } catch (e) {
+      setErr((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  let lastLoc = ''
+  return (
+    <div className="editor">
+      <h2>Count the pantry</h2>
+      <p className="hint">Type what's actually there. Leave a box alone if it's right; 0 means it's gone.</p>
+      {err && <p className="msg err">{err}</p>}
+      <ul className="stock">
+        {rows.map((r) => {
+          const it = itemById.get(r.grocery_item_id)!
+          const head = r.location !== lastLoc ? r.location : null
+          lastLoc = r.location
+          return (
+            <li key={r.id} className="count-row">
+              {head && <div className="section-label">{head}</div>}
+              <label className="count-line">
+                <span className="stock-name">{it.name}</span>
+                {r.expires && <span className="hint">use by {r.expires}</span>}
+                <input
+                  className="narrow"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  placeholder={String(r.qty)}
+                  aria-label={`${it.name} in ${r.unit}`}
+                  value={counts[r.id] ?? ''}
+                  onChange={(e) => setCounts({ ...counts, [r.id]: e.target.value })}
+                />
+                <span className="hint">{r.unit}</span>
+              </label>
+            </li>
+          )
+        })}
+      </ul>
+      <div className="actions">
+        <button className="btn" disabled={busy} onClick={save}>
+          {changed.length ? `Save ${changed.length} change${changed.length === 1 ? '' : 's'}` : 'Done'}
+        </button>
+        <button className="btn ghost" onClick={() => onDone(null)}>
+          Cancel
+        </button>
+      </div>
+    </div>
   )
 }
 

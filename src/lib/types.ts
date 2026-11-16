@@ -128,6 +128,10 @@ export interface PlannedMeal {
   leftover: boolean
   /** Free text in place of a recipe, e.g. "Eating out". */
   note: string | null
+  /** Marked as cooked; its ingredients were taken out of the pantry. */
+  cooked?: boolean
+  /** What cooking it took from the pantry, to put back if it's undone. */
+  used?: { lot: number; qty: number; item: number; unit: string; location: string; expires: string | null }[]
 }
 
 export interface MealPlan {

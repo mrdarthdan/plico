@@ -2,6 +2,7 @@
 // database decides who may do what (see docs/meal-planner.md).
 
 import { supabase } from './supabase'
+import type { Take } from './cooking'
 import type { Barcode, GroceryItem, GroceryItemInput, MealPlan, PantryRow, PlannerSettings } from './types'
 
 function fail(message: string): never {
@@ -145,4 +146,41 @@ export async function loadBarcodes(): Promise<Barcode[]> {
 export async function saveBarcode(b: Barcode) {
   const { error } = await supabase.from('barcodes').upsert(b, { onConflict: 'code' })
   if (error) fail(error.message)
+}
+
+/** Takes amounts out of pantry lots in one go; lots that run out are removed. */
+export async function pantryTake(takes: Take[]) {
+  if (!takes.length) return
+  const { error } = await supabase.rpc('pantry_take', { p_take: takes.map((t) => ({ lot: t.lot, qty: t.qty })) })
+  if (error) fail(error.message)
+}
+
+/** Puts back what pantryTake took, recreating lots that ran out. */
+export async function pantryReturn(takes: Take[]) {
+  if (!takes.length) return
+  const { error } = await supabase.rpc('pantry_return', { p_return: takes })
+  if (error) fail(error.message)
+}
+
+export interface PricePoint {
+  price: number
+  package_qty: number
+  package_unit: string
+  source: string | null
+  recorded_at: string
+}
+
+export async function loadPriceHistory(itemId: number): Promise<PricePoint[]> {
+  const { data, error } = await supabase
+    .from('price_history')
+    .select('price, package_qty, package_unit, source, recorded_at')
+    .eq('grocery_item_id', itemId)
+    .order('recorded_at', { ascending: false })
+    .limit(30)
+  if (error) fail(error.message)
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    ...(r as unknown as PricePoint),
+    price: Number(r.price),
+    package_qty: Number(r.package_qty),
+  }))
 }
