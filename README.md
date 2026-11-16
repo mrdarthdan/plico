@@ -11,6 +11,8 @@ your own Supabase project. One recipe box per install.
 - Admin page for members, drag-to-reorder sections, site name, and exports:
   a JSON backup, or a zip of printable PDFs (one book plus one PDF per recipe)
 - Public or sign-in-only reading
+- Optional meal planner: a week of meals within a grocery budget, built from
+  your recipes, with a priced shopping list ([docs/meal-planner.md](docs/meal-planner.md))
 - Keeps a copy in the browser, so recipes stay readable if the database is down
 - Installs into its own `plico` database schema, so it can share a Supabase
   project with other apps
@@ -42,7 +44,7 @@ Open the address it prints, normally http://localhost:5173.
 | Command | Does |
 |---|---|
 | `npm run build` | Builds the site into `dist/` |
-| `npm test` | Runs the unit tests for the recipe text parser |
+| `npm test` | Runs the unit tests (recipe text parser, meal planner) |
 | `npm run typecheck` | Checks the TypeScript types |
 | `npm run preview` | Serves the built `dist/` folder locally |
 
@@ -58,6 +60,7 @@ supabase/migrations/   database schema, roles and access rules
 supabase/seed.sql      optional sample sections and recipes
 supabase/tests/        access-rule checks, runnable on plain Postgres
 docs/supabase.md       setup, keys, data model, accounts, operations
+docs/meal-planner.md   the optional meal planner
 ```
 
 ## License

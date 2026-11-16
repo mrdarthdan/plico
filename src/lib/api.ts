@@ -40,7 +40,8 @@ export function clearCache() {
 export async function loadAll(): Promise<RecipeBoxData> {
   try {
     const [s, sec, rec] = await Promise.all([
-      supabase.from('settings').select('site_name, tagline, public_read').eq('id', 1).maybeSingle(),
+      // '*' rather than a column list, so an install without the planner migration still loads.
+      supabase.from('settings').select('*').eq('id', 1).maybeSingle(),
       supabase.from('sections').select('id, name, sort').order('sort').order('name'),
       supabase.from('recipes').select('*').order('title'),
     ])
