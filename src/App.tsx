@@ -154,10 +154,10 @@ export function App() {
     page = <ProfilePage user={user} profile={profile} onSaved={refreshAuth} />
   } else if (route === 'admin') {
     page = <AdminPage data={data} isAdmin={role === 'admin'} myId={user?.id ?? null} reload={reload} />
-  } else if (route === 'planner' || route === 'planner-list' || route === 'planner-prices') {
+  } else if (['planner', 'planner-list', 'planner-pantry', 'planner-prices'].includes(route)) {
     page = canPlan ? (
       <Planner
-        tab={route === 'planner' ? 'week' : route === 'planner-list' ? 'list' : 'prices'}
+        tab={route === 'planner' ? 'week' : route === 'planner-list' ? 'list' : route === 'planner-pantry' ? 'pantry' : 'prices'}
         data={data}
         favorites={favorites}
       />

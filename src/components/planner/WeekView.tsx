@@ -108,7 +108,8 @@ export function WeekView({ ctx, rebuild }: { ctx: PlannerContext; rebuild: () =>
       )}
       <p className="hint">
         Costs are estimates from the prices on the Prices tab. A dinner that makes enough for another meal becomes the
-        next day's lunch. Items marked as pantry staples (salt, spices, oil) count as already on hand.
+        next day's lunch. What's in the pantry counts as already paid for, and recipes that use up food expiring soon
+        are picked first. Pantry staples (salt, spices, oil) count as always on hand.
       </p>
     </>
   )
@@ -128,7 +129,7 @@ function MealCell({
 }) {
   const [picking, setPicking] = useState(false)
   const recipe = meal?.recipe_id ? byId.get(meal.recipe_id) : undefined
-  const cost = recipe && meal && !meal.leftover ? mealCost(recipe, meal.batches, ctx.book) : null
+  const cost = recipe && meal && !meal.leftover ? mealCost(recipe, meal.batches, ctx.book, ctx.stock) : null
   const spare = recipe && meal && !meal.leftover ? leftoverServings(recipe, meal.batches, people) : 0
 
   const choose = (value: string) => {
@@ -150,7 +151,7 @@ function MealCell({
   // Leftover options: the previous day's dinner, if one is planned.
   const prevDinner = ctx.plan.meals.find((m) => m.day === day - 1 && m.slot === 'dinner' && m.recipe_id && !m.leftover)
   const sorted = choices
-    .map((r) => ({ r, c: mealCost(r, batchesFor(r, people), ctx.book) }))
+    .map((r) => ({ r, c: mealCost(r, batchesFor(r, people), ctx.book, ctx.stock) }))
     .sort((a, b) => a.c.cost - b.c.cost)
 
   return (
@@ -165,9 +166,10 @@ function MealCell({
             {prevDinner && <option value={'__left:' + prevDinner.recipe_id}>Leftovers: {byId.get(prevDinner.recipe_id!)?.title}</option>}
             <option value="__note">Something else (type it)…</option>
             <option value="">Nothing planned</option>
-            <optgroup label={`${SLOT_LABEL[slot]} recipes, cheapest first`}>
+            <optgroup label={`${SLOT_LABEL[slot]} recipes, cheapest first (⏰ uses something expiring)`}>
               {sorted.map(({ r, c }) => (
                 <option key={r.id} value={r.id}>
+                  {c.expiring ? '⏰ ' : ''}
                   {r.title} · {money(c.cost)}
                   {c.unknown ? ' +?' : ''}
                 </option>
@@ -195,6 +197,7 @@ function MealCell({
           <span className="meal-meta">
             {money(cost.cost)}
             {cost.unknown ? ` + ${cost.unknown} unpriced` : ''}
+            {cost.expiring ? ' · uses something expiring' : cost.inStock ? ` · ${cost.inStock} from the pantry` : ''}
             {meal && meal.batches > 1 ? ` · ${meal.batches}× recipe` : ''}
             {spare >= people ? ` · leftovers for ${Math.floor(spare / people)} more meal${spare >= 2 * people ? 's' : ''}` : ''}
           </span>

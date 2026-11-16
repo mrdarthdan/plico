@@ -81,7 +81,26 @@ export interface GroceryItem {
   conversions: Record<string, number>
   staple: boolean
   aliases: string[]
-  upc: string | null
+}
+
+/** A scanned product: one brand and size of a grocery item. */
+export interface Barcode {
+  code: string
+  grocery_item_id: number
+  product_name: string | null
+  brand: string | null
+  size_qty: number | null
+  size_unit: string | null
+}
+
+/** One lot on hand. */
+export interface PantryRow {
+  id: number
+  grocery_item_id: number
+  qty: number
+  unit: string
+  location: string
+  expires: string | null
 }
 
 export type GroceryItemInput = Omit<GroceryItem, 'id' | 'price_updated_at'>
@@ -108,6 +127,8 @@ export interface MealPlan {
   meals: PlannedMeal[]
   checked: string[]
   extras: { label: string; cost: number | null }[]
+  /** Shopping-list lines already put away into the pantry. */
+  stocked: string[]
 }
 export interface Profile {
   user_id: string

@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  addDays, buildWeek, extrasTotal, makePriceBook, money, shoppingList, weekLabel, weekStartOf,
+  addDays, buildWeek, extrasTotal, makePriceBook, money, shoppingList, stockFrom, today, weekLabel, weekStartOf,
+  type Stock,
 } from '../../lib/planner'
-import { loadGroceryItems, loadPlan, loadPlannerSettings, recentRecipeIds, savePlan } from '../../lib/plannerApi'
-import type { GroceryItem, MealPlan, PlannerSettings, RecipeBoxData } from '../../lib/types'
+import {
+  loadBarcodes, loadGroceryItems, loadPantry, loadPlan, loadPlannerSettings, recentRecipeIds, savePlan,
+} from '../../lib/plannerApi'
+import type { Barcode, GroceryItem, MealPlan, PantryRow, PlannerSettings, RecipeBoxData } from '../../lib/types'
 import { go } from '../../lib/useHash'
+import { PantryView } from './PantryView'
 import { PricesView } from './PricesView'
 import { ShoppingView } from './ShoppingView'
 import { WeekView } from './WeekView'
 
-export type PlannerTab = 'week' | 'list' | 'prices'
+export type PlannerTab = 'week' | 'list' | 'pantry' | 'prices'
 
 // Kept while the page stays open, so switching tabs keeps the week you were on.
 let rememberedWeek: string | null = null
@@ -21,6 +25,11 @@ export interface PlannerContext {
   setItems: (items: GroceryItem[]) => void
   reloadItems: () => Promise<void>
   setSettings: (s: PlannerSettings) => void
+  pantry: PantryRow[]
+  barcodes: Barcode[]
+  /** Reloads grocery items, pantry and barcodes together. */
+  reloadStock: () => Promise<void>
+  stock: Stock
   plan: MealPlan
   updatePlan: (next: MealPlan) => void
   favorites: Set<string>
@@ -34,6 +43,8 @@ export interface PlannerContext {
 export function Planner({ tab, data, favorites }: { tab: PlannerTab; data: RecipeBoxData; favorites: Set<string> }) {
   const [settings, setSettings] = useState<PlannerSettings | null>(null)
   const [items, setItems] = useState<GroceryItem[] | null>(null)
+  const [pantry, setPantry] = useState<PantryRow[]>([])
+  const [barcodes, setBarcodes] = useState<Barcode[]>([])
   const [week, setWeekState] = useState<string | null>(rememberedWeek)
   const [plan, setPlan] = useState<MealPlan | null>(null)
   const [recent, setRecent] = useState<Set<string>>(new Set())
@@ -47,6 +58,12 @@ export function Planner({ tab, data, favorites }: { tab: PlannerTab; data: Recip
   const reloadItems = useCallback(async () => {
     setItems(await loadGroceryItems())
   }, [])
+  const reloadStock = useCallback(async () => {
+    const [i, p, b] = await Promise.all([loadGroceryItems(), loadPantry(), loadBarcodes()])
+    setItems(i)
+    setPantry(p)
+    setBarcodes(b)
+  }, [])
 
   useEffect(() => {
     void (async () => {
@@ -54,12 +71,12 @@ export function Planner({ tab, data, favorites }: { tab: PlannerTab; data: Recip
         const s = await loadPlannerSettings()
         setSettings(s)
         if (!rememberedWeek) setWeek(weekStartOf(new Date(), s.week_starts_on))
-        await reloadItems()
+        await reloadStock()
       } catch (e) {
         setError((e as Error).message)
       }
     })()
-  }, [reloadItems])
+  }, [reloadStock])
 
   useEffect(() => {
     if (!week || !settings) return
@@ -71,9 +88,9 @@ export function Planner({ tab, data, favorites }: { tab: PlannerTab; data: Recip
         if (stale) return
         setRecent(r)
         setPlan(
-          p ?? {
+          p ? { ...p, stocked: p.stocked ?? [] } : {
             week_start: week, budget: settings.weekly_budget, household_size: settings.household_size,
-            meals: [], checked: [], extras: [],
+            meals: [], checked: [], extras: [], stocked: [],
           },
         )
       } catch (e) {
@@ -89,7 +106,8 @@ export function Planner({ tab, data, favorites }: { tab: PlannerTab; data: Recip
 
   const book = useMemo(() => makePriceBook(items ?? [], settings?.ignored ?? []), [items, settings])
   const byId = useMemo(() => new Map(data.recipes.map((r) => [r.id, r])), [data.recipes])
-  const list = useMemo(() => shoppingList(plan?.meals ?? [], byId, book), [plan, byId, book])
+  const stock = useMemo(() => stockFrom(items ?? [], pantry, today()), [items, pantry])
+  const list = useMemo(() => shoppingList(plan?.meals ?? [], byId, book, stock), [plan, byId, book, stock])
 
   const updatePlan = (next: MealPlan) => {
     setPlan(next)
@@ -100,6 +118,7 @@ export function Planner({ tab, data, favorites }: { tab: PlannerTab; data: Recip
   const tabs: [PlannerTab, string, string][] = [
     ['week', 'Week', 'planner'],
     ['list', 'Shopping list', 'planner-list'],
+    ['pantry', 'Pantry', 'planner-pantry'],
     ['prices', 'Prices', 'planner-prices'],
   ]
 
@@ -108,7 +127,8 @@ export function Planner({ tab, data, favorites }: { tab: PlannerTab; data: Recip
     body = error ? null : <p className="hint">Loading the planner…</p>
   } else {
     const ctx: PlannerContext = {
-      data, settings, items, setItems, reloadItems, setSettings, plan, updatePlan, favorites, recent, book, list,
+      data, settings, items, setItems, reloadItems, setSettings, pantry, barcodes, reloadStock, stock,
+      plan, updatePlan, favorites, recent, book, list,
       total: list.total + extrasTotal(plan), onError: setError,
     }
     body = (
@@ -133,13 +153,14 @@ export function Planner({ tab, data, favorites }: { tab: PlannerTab; data: Recip
             rebuild={() =>
               buildWeek({
                 recipes: data.recipes, sections: data.sections, settings, budget: plan.budget,
-                people: plan.household_size, existing: plan.meals, favorites, recent, book,
+                people: plan.household_size, existing: plan.meals, favorites, recent, book, stock,
                 seed: Date.now() % 2147483647,
               })
             }
           />
         )}
         {tab === 'list' && <ShoppingView ctx={ctx} />}
+        {tab === 'pantry' && <PantryView ctx={ctx} />}
         {tab === 'prices' && <PricesView ctx={ctx} />}
       </>
     )

@@ -6,9 +6,10 @@ priced shopping list. It is off until an admin turns it on.
 
 ## Setting it up
 
-1. Run `supabase/migrations/20261116000000_meal_planner.sql` the same way as
-   the other migrations (see [supabase.md](supabase.md)). It only adds to the
-   `plico` schema; recipes and accounts are untouched.
+1. Run `supabase/migrations/20261116000000_meal_planner.sql` and then
+   `20261117000000_pantry.sql`, the same way as the other migrations (see
+   [supabase.md](supabase.md)). They only add to the `plico` schema; recipes
+   and accounts are untouched.
 2. Sign in as an admin, open **Admin → Meal planner**, and tick
    **Turn on the meal planner**.
 3. Set the household size, the usual weekly budget, and which recipe sections
@@ -53,13 +54,44 @@ day's lunch. If the week's shopping comes out over budget, it rebuilds,
 leaning harder on cost each time. Meals you choose by hand are locked and kept
 when you rebuild.
 
+## The pantry and barcodes
+
+The **Pantry** tab keeps what's on hand: an amount, where it's kept (pantry,
+fridge, freezer) and an optional use-by date, one row per lot. The planner
+uses it in two ways: the shopping list only buys what the pantry is short of,
+and when building a week it prefers recipes that use what's on hand, most of
+all anything expiring within four days. Food in the pantry counts as already
+paid for.
+
+Ways to fill it:
+
+- **Scan to add.** Opens the phone's camera and reads the product barcode.
+  Chrome on Android uses the browser's own barcode reader; everything else,
+  including every browser on iPhone, uses the [ZXing](https://github.com/zxing-js/library)
+  library, loaded only when the scanner opens. The camera needs the site to be
+  served over HTTPS, and the browser asks permission the first time. A typed
+  number works too.
+- **The first scan of a product** looks it up in [Open Food Facts](https://world.openfoodfacts.org),
+  a free, open product database, for its name, brand and size. You then say
+  which grocery item it is (or make a new one, with a plain name such as
+  "black beans" so recipes can find it). The barcode is remembered, with its
+  size, so the next scan of that product goes straight to "how many".
+- **Price paid** on a scan updates the item's price, scaled to its usual
+  package size, and marks it as a receipt price.
+- **From the shopping list:** tick what you bought, then **Put ticked items in
+  the pantry**. Each line goes in once.
+
+**Use some**, **Edit** and **Used up** keep amounts current by hand.
+
 ## Data
 
 | Table | Holds |
 |---|---|
 | `planner_settings` | Single row: budget, household size, week start day, meals and sections, ignored ingredient names |
-| `grocery_items` | Name, aisle, package size and unit, price, conversions, staple flag, other names, UPC |
-| `meal_plans` | One row per week (keyed by its first day): budget, people, the meals as JSON, ticked shopping lines, extra lines |
+| `grocery_items` | Name, aisle, package size and unit, price, conversions, staple flag, other names |
+| `meal_plans` | One row per week (keyed by its first day): budget, people, the meals as JSON, ticked shopping lines, extra lines, lines put in the pantry |
+| `barcodes` | A scanned product: code, grocery item, product name, brand and size |
+| `pantry` | What's on hand: grocery item, amount and unit, where it's kept, use-by date |
 
 `settings.planner_enabled` is the on/off switch. `plico.can_plan()` is true
 for editors and admins while it's on; every planner policy uses it.

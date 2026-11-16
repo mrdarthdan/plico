@@ -4,7 +4,7 @@
 
 import { ingredientKey, makeResolver } from './ingredients'
 import { normalizeUnit, toPackageUnits } from './units'
-import type { GroceryItem, MealPlan, PlannedMeal, PlannerSettings, Recipe, Section, Slot } from './types'
+import type { GroceryItem, MealPlan, PantryRow, PlannedMeal, PlannerSettings, Recipe, Section, Slot } from './types'
 
 export const SLOTS: Slot[] = ['breakfast', 'lunch', 'dinner']
 export const SLOT_LABEL: Record<Slot, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner' }
@@ -23,6 +23,39 @@ export function makePriceBook(items: GroceryItem[], ignored: string[]): PriceBoo
 }
 
 export type Problem = 'no-item' | 'no-price' | 'no-conversion'
+
+// ---------------------------------------------------------------------------
+// Stock on hand
+// ---------------------------------------------------------------------------
+
+export interface StockEntry {
+  /** Total on hand, in the item's package unit. */
+  qty: number
+  /** Earliest use-by date among its lots, YYYY-MM-DD. */
+  soonest: string | null
+  /** Some of it should be used within the next few days. */
+  expiringSoon: boolean
+}
+export type Stock = Map<number, StockEntry>
+
+/** Adds up the pantry per grocery item. Lots in units that can't be converted are left out. */
+export function stockFrom(items: GroceryItem[], rows: PantryRow[], today: string, soonDays = 4): Stock {
+  const byId = new Map(items.map((i) => [i.id, i]))
+  const soonBy = addDays(today, soonDays)
+  const stock: Stock = new Map()
+  for (const r of rows) {
+    const it = byId.get(r.grocery_item_id)
+    if (!it || r.qty <= 0) continue
+    const q = toPackageUnits(r.qty, r.unit, it.package_unit, it.conversions)
+    if (q == null) continue
+    const e = stock.get(it.id) ?? { qty: 0, soonest: null, expiringSoon: false }
+    e.qty += q
+    if (r.expires && (!e.soonest || r.expires < e.soonest)) e.soonest = r.expires
+    if (r.expires && r.expires <= soonBy) e.expiringSoon = true
+    stock.set(it.id, e)
+  }
+  return stock
+}
 
 interface Need {
   key: string
@@ -58,22 +91,46 @@ export function leftoverServings(r: Recipe, batches: number, people: number): nu
  * What one meal uses, priced by the share of each package it takes. Staples
  * count as free. `unknown` counts ingredients that couldn't be priced.
  */
-export function mealCost(r: Recipe, batches: number, book: PriceBook): { cost: number; unknown: number } {
+export interface MealCost {
+  cost: number
+  unknown: number
+  /** Ingredients the pantry already covers. */
+  inStock: number
+  /** Ingredients that would use up something expiring soon. */
+  expiring: number
+}
+
+export function mealCost(r: Recipe, batches: number, book: PriceBook, stock: Stock = new Map()): MealCost {
   let cost = 0
   let unknown = 0
+  let inStock = 0
+  let expiring = 0
   for (const n of needsOf(r, batches, book)) {
     const it = book.resolve(n.key)
     if (it?.staple) continue
-    if (!it || it.price == null) {
+    const have = it ? stock.get(it.id) : undefined
+    if (have && have.qty > 0) {
+      inStock++
+      if (have.expiringSoon) expiring++
+    }
+    if (!it || (it.price == null && !have)) {
       unknown++
       continue
     }
     if (n.qty == null) continue
     const used = toPackageUnits(n.qty, n.unit, it.package_unit, it.conversions)
-    if (used == null) unknown++
-    else cost += (used / it.package_qty) * it.price
+    if (used == null) {
+      if (!have) unknown++
+      continue
+    }
+    // What's already in the pantry has been paid for.
+    const toBuy = Math.max(0, used - (have?.qty ?? 0))
+    if (toBuy > 0) {
+      if (it.price == null) unknown++
+      else cost += (toBuy / it.package_qty) * it.price
+    }
   }
-  return { cost, unknown }
+  return { cost, unknown, inStock, expiring }
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +145,8 @@ export interface ShoppingLine {
   item: GroceryItem | null
   /** Total in the item's package unit. 0 when nothing could be measured. */
   needed: number
+  /** On hand in the pantry, in the item's package unit. */
+  onHand: number
   packages: number
   /** packages × price; null when there is no item or no price. */
   cost: number | null
@@ -107,7 +166,12 @@ export interface ShoppingList {
   unknown: number
 }
 
-export function shoppingList(meals: PlannedMeal[], recipes: Map<string, Recipe>, book: PriceBook): ShoppingList {
+export function shoppingList(
+  meals: PlannedMeal[],
+  recipes: Map<string, Recipe>,
+  book: PriceBook,
+  stock: Stock = new Map(),
+): ShoppingList {
   const lines = new Map<string, ShoppingLine & { unmeasured: boolean }>()
   for (const m of meals) {
     if (m.leftover || !m.recipe_id) continue
@@ -124,6 +188,7 @@ export function shoppingList(meals: PlannedMeal[], recipes: Map<string, Recipe>,
           category: it?.category || (it ? 'Other' : 'Not matched yet'),
           item: it,
           needed: 0,
+          onHand: it ? stock.get(it.id)?.qty ?? 0 : 0,
           packages: 0,
           cost: null,
           staple: !!it?.staple,
@@ -160,10 +225,12 @@ export function shoppingList(meals: PlannedMeal[], recipes: Map<string, Recipe>,
   for (const { unmeasured, ...line } of lines.values()) {
     const it = line.item
     if (it) {
-      line.packages = Math.ceil(line.needed / it.package_qty - 1e-6)
-      // Something was needed but couldn't be measured: assume one package.
-      if (line.packages === 0 && unmeasured) line.packages = 1
-      if (it.price == null) line.problems.push('no-price')
+      const short = Math.max(0, line.needed - line.onHand)
+      line.packages = Math.ceil(short / it.package_qty - 1e-6)
+      // Something was needed but couldn't be measured, and there's none on hand: assume one package.
+      if (line.packages === 0 && unmeasured && line.onHand <= 0) line.packages = 1
+      if (line.packages === 0) line.cost = 0
+      else if (it.price == null) line.problems.push('no-price')
       else line.cost = line.packages * it.price
     }
     if (!line.staple) {
@@ -216,6 +283,8 @@ export interface BuildInput {
   /** Recipes planned recently, to rest them for a week. */
   recent: Set<string>
   book: PriceBook
+  /** What's on hand: recipes that use it, especially anything expiring, are preferred. */
+  stock?: Stock
   seed: number
 }
 
@@ -237,7 +306,7 @@ export function buildWeek(input: BuildInput): BuildResult {
   let best: BuildResult | null = null
   for (const lean of [1, 2, 4, 8, 16]) {
     const meals = fillWeek(input, lean)
-    const list = shoppingList(meals, byId, input.book)
+    const list = shoppingList(meals, byId, input.book, input.stock)
     const result = { meals, total: list.total, unknown: list.unknown, overBudget: list.total > input.budget }
     if (!best || result.total < best.total) best = result
     if (!result.overBudget) return result
@@ -249,14 +318,14 @@ function fillWeek(input: BuildInput, costLean: number): PlannedMeal[] {
   const { settings, people, book, favorites, recent } = input
   const rand = rng(input.seed)
   const pools = slotSections(settings, input.sections)
-  const candidates = {} as Record<Slot, { r: Recipe; batches: number; cost: number; unknown: number }[]>
+  const candidates = {} as Record<Slot, ({ r: Recipe; batches: number } & MealCost)[]>
   for (const s of SLOTS) {
     const secs = new Set(pools[s])
     candidates[s] = input.recipes
       .filter((r) => secs.has(r.section_id))
       .map((r) => {
         const batches = batchesFor(r, people)
-        return { r, batches, ...mealCost(r, batches, book) }
+        return { r, batches, ...mealCost(r, batches, book, input.stock) }
       })
   }
   const on = SLOTS.filter((s) => settings.slots[s]?.on)
@@ -288,7 +357,9 @@ function fillWeek(input: BuildInput, costLean: number): PlannedMeal[] {
             (used.get(c.r.id) ?? 0) * 1.5 +
             (recent.has(c.r.id) ? 0.5 : 0) -
             (favorites.has(c.r.id) ? 0.4 : 0) +
-            c.unknown * 0.15 +
+            c.unknown * 0.15 -
+            c.inStock * 0.1 -
+            c.expiring * 0.6 +
             rand() * 0.8
           if (score < bestScore) {
             bestScore = score
@@ -335,6 +406,10 @@ function parse(isoDate: string): Date {
 }
 
 /** The first day of the week holding `date`, as YYYY-MM-DD. */
+export function today(): string {
+  return iso(new Date())
+}
+
 export function weekStartOf(date: Date, startsOn: number): string {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
   d.setDate(d.getDate() - ((d.getDay() - startsOn + 7) % 7))
