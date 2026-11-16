@@ -57,6 +57,7 @@ src/lib/               data access, recipe text parsing, formatting, timers
 src/components/        pages: index, recipe, editor, account, admin, cook mode
 public/config.json     connection details, read when the page loads
 supabase/migrations/   database schema, roles and access rules
+supabase/functions/    the optional Kroger price lookup (edge function)
 supabase/seed.sql      optional sample sections and recipes
 supabase/tests/        access-rule checks, runnable on plain Postgres
 docs/supabase.md       setup, keys, data model, accounts, operations

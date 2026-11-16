@@ -232,3 +232,14 @@ input.narrow { width: 90px; flex: none; min-width: 0; }
 .scanner-aim { position: absolute; left: 10%; right: 10%; top: 36%; height: 28%; border: 3px solid #fff; border-radius: 12px; box-shadow: 0 0 0 9999px rgb(0 0 0 / .35); pointer-events: none; }
 .scanner-note { position: absolute; inset: auto 0 16px; text-align: center; color: #fff; margin: 0; }
 .scanner .inline-form input { font-size: 18px; }
+
+/* store prices */
+.kpicker { display: flex; flex-direction: column; gap: 8px; }
+.kresults { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; }
+.kresults li { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 8px; background: var(--bg); border-radius: 10px; }
+.kresults img, .kimg { width: 48px; height: 48px; object-fit: contain; border-radius: 8px; background: #fff; display: block; }
+.kinfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.ktag { display: inline-flex; gap: 6px; align-items: baseline; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.ktag .badge { margin-left: 0; }
+.fix-picker { flex-basis: 100%; }
+@media (max-width: 560px) { .kresults li { grid-template-columns: 40px minmax(0, 1fr); } .kresults li .btn { grid-column: 2; justify-self: start; } .kresults img, .kimg { width: 40px; height: 40px; } }

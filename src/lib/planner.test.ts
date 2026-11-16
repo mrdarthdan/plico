@@ -6,7 +6,8 @@ import { normalizeUnit, toPackageUnits } from './units'
 
 const item = (id: number, name: string, extra: Partial<GroceryItem> = {}): GroceryItem => ({
   id, name, category: null, package_qty: 1, package_unit: 'each', price: 1, price_source: 'manual',
-  price_updated_at: null, conversions: {}, staple: false, aliases: [], ...extra,
+  price_updated_at: null, conversions: {}, staple: false, aliases: [], kroger_product_id: null, kroger_label: null,
+  kroger_regular: null, kroger_promo: null, kroger_promo_ends: null, kroger_checked_at: null, ...extra,
 })
 
 const recipe = (id: string, section_id: number, serves: number, items: [number | null, string, string][]): Recipe => ({
@@ -55,7 +56,7 @@ describe('matching', () => {
 })
 
 const settings: PlannerSettings = {
-  weekly_budget: 100, household_size: 4, week_starts_on: 0, ignored: ['water'],
+  weekly_budget: 100, household_size: 4, week_starts_on: 0, ignored: ['water'], kroger_location_id: null, kroger_store: null,
   slots: { breakfast: { on: true, sections: [1] }, lunch: { on: true, sections: [2] }, dinner: { on: true, sections: [2] } },
 }
 

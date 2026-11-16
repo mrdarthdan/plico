@@ -67,6 +67,9 @@ export interface PlannerSettings {
   slots: Record<Slot, SlotConfig>
   /** Ingredient names that never go on a shopping list. */
   ignored: string[]
+  /** The Kroger-family store prices come from, if one is chosen. */
+  kroger_location_id: string | null
+  kroger_store: string | null
 }
 
 export interface GroceryItem {
@@ -81,6 +84,13 @@ export interface GroceryItem {
   conversions: Record<string, number>
   staple: boolean
   aliases: string[]
+  /** The Kroger product this item is priced from, and its latest prices there. */
+  kroger_product_id: string | null
+  kroger_label: string | null
+  kroger_regular: number | null
+  kroger_promo: number | null
+  kroger_promo_ends: string | null
+  kroger_checked_at: string | null
 }
 
 /** A scanned product: one brand and size of a grocery item. */

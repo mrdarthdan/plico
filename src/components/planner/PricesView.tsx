@@ -1,8 +1,10 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { batchesFor, money, shoppingList, slotSections, SLOTS, type ShoppingLine } from '../../lib/planner'
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { itemFromProduct, updateFromProduct } from '../../lib/kroger'
+import { batchesFor, money, shoppingList, slotSections, SLOTS, today, type ShoppingLine } from '../../lib/planner'
 import { addGroceryItems, deleteGroceryItem, saveGroceryItem, savePlannerSettings } from '../../lib/plannerApi'
 import type { GroceryItem, GroceryItemInput, PlannedMeal } from '../../lib/types'
 import { amount, PACKAGE_UNITS } from '../../lib/units'
+import { KrogerPanel, KrogerPicker } from './Kroger'
 import type { PlannerContext } from './Planner'
 import { problemText } from './ShoppingView'
 
@@ -43,6 +45,8 @@ export function PricesView({ ctx }: { ctx: PlannerContext }) {
   const [filter, setFilter] = useState('')
   const [showAll, setShowAll] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [atStore, setAtStore] = useState<string | null>(null)
+  const storeId = settings.kroger_location_id
 
   // Everything the planner could choose from, made once each, to price ahead.
   const allLines = useMemo(() => {
@@ -101,6 +105,8 @@ export function PricesView({ ctx }: { ctx: PlannerContext }) {
         />
       )}
 
+      <KrogerPanel ctx={ctx} />
+
       <section className="admin-block">
         <h2>Needs attention</h2>
         <p className="hint">
@@ -127,6 +133,24 @@ export function PricesView({ ctx }: { ctx: PlannerContext }) {
                 line={l}
                 items={items}
                 busy={busy}
+                picker={
+                  atStore === l.key && storeId ? (
+                    <KrogerPicker
+                      term={l.item?.name ?? l.name}
+                      locationId={storeId}
+                      busy={busy}
+                      onCancel={() => setAtStore(null)}
+                      onPick={(p) =>
+                        void run(() =>
+                          l.item
+                            ? saveGroceryItem(l.item.id, updateFromProduct(l.item, p, today()))
+                            : saveGroceryItem(null, itemFromProduct(l.name, p, today())),
+                        ).then((ok) => ok && setAtStore(null))
+                      }
+                    />
+                  ) : null
+                }
+                onStore={storeId && !l.problems.includes('no-conversion') ? () => setAtStore(l.key) : null}
                 onEdit={() => setEditing(l.item ? { draft: l.item, hints: l.missingUnits } : { draft: { name: l.name }, hints: [] })}
                 onStaple={() => run(() => saveGroceryItem(null, { name: l.name, staple: true, category: 'Baking & Spices' }))}
                 onLink={(it) => run(() => saveGroceryItem(it.id, { aliases: [...it.aliases, l.name] }))}
@@ -188,7 +212,16 @@ export function PricesView({ ctx }: { ctx: PlannerContext }) {
                   <td>{amount(it.package_qty, it.package_unit)}</td>
                   <td>
                     {it.price != null ? money(it.price) : '—'}
-                    {it.price_updated_at && <span className="hint"> · {new Date(it.price_updated_at).toLocaleDateString()}</span>}
+                    {it.price != null && (
+                      <span className="hint">
+                        {' · '}
+                        {it.price_source === 'kroger' ? 'store' : it.price_source === 'receipt' ? 'receipt' : 'typed'}
+                        {it.price_updated_at ? ' ' + new Date(it.price_updated_at).toLocaleDateString() : ''}
+                      </span>
+                    )}
+                    {it.price_source === 'kroger' && it.kroger_promo && it.kroger_promo_ends && it.kroger_promo_ends >= today() && (
+                      <span className="badge">sale</span>
+                    )}
                   </td>
                   <td>
                     <span className="row-actions">
@@ -215,11 +248,13 @@ export function PricesView({ ctx }: { ctx: PlannerContext }) {
 }
 
 function FixRow({
-  line: l, items, busy, onEdit, onStaple, onLink, onIgnore,
+  line: l, items, busy, picker, onStore, onEdit, onStaple, onLink, onIgnore,
 }: {
   line: ShoppingLine
   items: GroceryItem[]
   busy: boolean
+  picker: ReactNode
+  onStore: (() => void) | null
   onEdit: () => void
   onStaple: () => void
   onLink: (it: GroceryItem) => void
@@ -235,14 +270,19 @@ function FixRow({
         </div>
       </div>
       <div className="row-actions">
+        {onStore && (
+          <button className="btn" disabled={busy} onClick={onStore} title="Search the store and use its product and price">
+            Find at the store
+          </button>
+        )}
         {l.item ? (
-          <button className="btn" disabled={busy} onClick={onEdit}>
+          <button className="btn ghost" disabled={busy} onClick={onEdit}>
             Edit {l.item.name}
           </button>
         ) : (
           <>
-            <button className="btn" disabled={busy} onClick={onEdit}>
-              Add item
+            <button className="btn ghost" disabled={busy} onClick={onEdit}>
+              Add by hand
             </button>
             <button className="btn ghost" disabled={busy} onClick={onStaple} title="Count it as always on hand">
               Staple
@@ -271,6 +311,7 @@ function FixRow({
           </>
         )}
       </div>
+      {picker && <div className="fix-picker">{picker}</div>}
     </li>
   )
 }
