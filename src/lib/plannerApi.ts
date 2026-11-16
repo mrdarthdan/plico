@@ -73,6 +73,14 @@ export async function deleteGroceryItem(id: number) {
   if (error) fail(error.message)
 }
 
+/** Deletes many items at once. Their pantry stock and barcodes go with them. */
+export async function deleteGroceryItems(ids: number[]) {
+  for (let i = 0; i < ids.length; i += 100) {
+    const { error } = await supabase.from('grocery_items').delete().in('id', ids.slice(i, i + 100))
+    if (error) fail(error.message)
+  }
+}
+
 export async function loadPlan(weekStart: string): Promise<MealPlan | null> {
   const { data, error } = await supabase
     .from('meal_plans')
