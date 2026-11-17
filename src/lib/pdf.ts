@@ -15,10 +15,10 @@ const SIZES: Record<PageSize, [number, number]> = { letter: [612, 792], a4: [595
 const MARGIN = 54
 const FOOTER = 30
 
-const INK = rgb(0.11, 0.15, 0.13)
-const MUTED = rgb(0.36, 0.42, 0.38)
-const HERB = rgb(0.18, 0.42, 0.3)
-const LINE = rgb(0.85, 0.88, 0.84)
+const INK = rgb(0.12, 0.14, 0.19)
+const MUTED = rgb(0.36, 0.39, 0.44)
+const HERB = rgb(0.18, 0.29, 0.54)
+const LINE = rgb(0.89, 0.86, 0.81)
 
 interface Fonts {
   serifBold: PDFFont

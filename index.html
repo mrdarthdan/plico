@@ -3,12 +3,77 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#f8f5ef" />
     <title>Plico</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="./favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Atkinson Hyperlegible (Braille Institute) for reading, Literata (built for
+         long-form screen reading) for headings. Split in two requests so one
+         family failing to load cannot take the other down with it. -->
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Literata:opsz,wght@7..72,500;7..72,600&display=swap"
     />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Atkinson+Hyperlegible+Mono:wght@400;500;600&display=swap"
+    />
+    <script>
+      // Light / dark / auto. Runs before first paint so there is no flash, then
+      // adds a theme button to the account bar whenever React renders one.
+      ;(function () {
+        var KEY = 'plico-theme', root = document.documentElement
+        var mq = window.matchMedia('(prefers-color-scheme: dark)')
+        var NAME = { auto: 'Auto', light: 'Light', dark: 'Dark' }
+        var S = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">'
+        var ICON = {
+          auto: S + '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+          light: S + '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+          dark: S + '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>'
+        }
+        var NEXT = { auto: 'light', light: 'dark', dark: 'auto' }
+        function get() {
+          try { var v = localStorage.getItem(KEY); return NAME[v] ? v : 'auto' } catch (e) { return 'auto' }
+        }
+        function apply(mode) {
+          if (mode === 'auto') root.removeAttribute('data-theme')
+          else root.setAttribute('data-theme', mode)
+          var dark = mode === 'dark' || (mode === 'auto' && mq.matches)
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) meta.setAttribute('content', dark ? '#14161b' : '#f8f5ef')
+        }
+        function render(b) {
+          var m = get()
+          b.innerHTML = ICON[m] + '<span>' + NAME[m] + '</span>'
+          b.title = 'Theme: ' + NAME[m] + ' (click to change)'
+          b.setAttribute('aria-label', 'Color theme: ' + NAME[m] + '. Change theme')
+        }
+        function ensure() {
+          var bar = document.querySelector('.acct')
+          if (!bar || bar.querySelector('.theme-toggle')) return
+          var b = document.createElement('button')
+          b.type = 'button'
+          b.className = 'link theme-toggle'
+          b.addEventListener('click', function () {
+            var m = NEXT[get()]
+            try { localStorage.setItem(KEY, m) } catch (e) {}
+            apply(m)
+            render(b)
+          })
+          render(b)
+          bar.insertBefore(b, bar.firstChild)
+        }
+        apply(get())
+        if (mq.addEventListener) mq.addEventListener('change', function () { apply(get()) })
+        document.addEventListener('DOMContentLoaded', function () {
+          ensure()
+          new MutationObserver(ensure).observe(document.getElementById('root'), { childList: true, subtree: true })
+        })
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
