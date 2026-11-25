@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { deleteRecipe } from '../lib/api'
-import { fmtQty, mmss, timeLabel } from '../lib/format'
+import { fmtQty, frac, mmss, timeLabel } from '../lib/format'
+import { itemFactor, scaleRecipe, sizeItem, sizeStep } from '../lib/scale'
 import { timerKey, timerLeft, toggleTimer, useTimerTick } from '../lib/timers'
 import type { Recipe } from '../lib/types'
 import { go } from '../lib/useHash'
 import { CookMode } from './CookMode'
 
 // Remembered while the page stays open, so leaving a recipe and coming back
-// keeps your serving count and ticked-off ingredients.
+// keeps your serving count (or size) and ticked-off ingredients.
 const remembered: { servings: Record<string, number>; checked: Record<string, Record<string, boolean>> } = {
   servings: {},
   checked: {},
@@ -23,18 +24,26 @@ interface Props {
 }
 
 export function RecipePage({ recipe: r, sectionName, canEdit, isFavorite, onToggleFavorite, onDeleted }: Props) {
-  const [servings, setServingsState] = useState(remembered.servings[r.id] ?? r.serves ?? 1)
+  const key = sizeItem(r)
+  const base = key ? (key.qty as number) : (r.serves ?? 1)
+  const [amount, setAmountState] = useState(remembered.servings[r.id] ?? base)
+  const [typed, setTyped] = useState<string | null>(null)
   const [checked, setChecked] = useState<Record<string, boolean>>(remembered.checked[r.id] ?? {})
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cooking, setCooking] = useState(false)
 
-  const factor = r.serves ? servings / r.serves : 1
-  const setServings = (n: number) => {
+  const scaled = scaleRecipe(r, amount)
+  const factor = scaled.factor
+  const setAmount = (n: number) => {
     remembered.servings[r.id] = n
-    setServingsState(n)
+    setAmountState(n)
   }
+  const servings = amount
+  const setServings = setAmount
+  const step = key ? sizeStep(base) : 1
+  const sizeName = key ? key.item.split(',')[0] : ''
   const toggle = (k: string, on: boolean) => {
     const next = { ...checked, [k]: on }
     remembered.checked[r.id] = next
@@ -65,7 +74,31 @@ export function RecipePage({ recipe: r, sectionName, canEdit, isFavorite, onTogg
       </header>
 
       <div className="r-bar">
-        {r.serves ? (
+        {key ? (
+          <div className="stepper size" role="group" aria-label={'Size: ' + sizeName}>
+            <button aria-label="Smaller" onClick={() => setAmount(Math.max(step, Math.round((amount - step) / step) * step))}>
+              −
+            </button>
+            <span>
+              <input
+                aria-label={'Amount of ' + sizeName + (key.unit ? ' in ' + key.unit : '')}
+                inputMode="decimal"
+                value={typed ?? String(amount)}
+                onChange={(e) => {
+                  setTyped(e.target.value)
+                  const n = parseFloat(e.target.value)
+                  if (n > 0 && n <= 1000) setAmount(n)
+                }}
+                onBlur={() => setTyped(null)}
+              />{' '}
+              {key.unit} {sizeName}
+              {scaled.serves ? <small> · serves about {scaled.serves}</small> : null}
+            </span>
+            <button aria-label="Larger" onClick={() => setAmount(Math.round((amount + step) / step) * step)}>
+              +
+            </button>
+          </div>
+        ) : r.serves ? (
           <div className="stepper" role="group" aria-label="Servings">
             <button aria-label="Fewer servings" onClick={() => setServings(Math.max(1, servings - 1))}>
               −
@@ -138,7 +171,9 @@ export function RecipePage({ recipe: r, sectionName, canEdit, isFavorite, onTogg
                     <li key={k}>
                       <label>
                         <input type="checkbox" checked={!!checked[k]} onChange={(e) => toggle(k, e.target.checked)} />
-                        <span className="qty">{fmtQty(it.qty, it.unit, factor)}</span>
+                        <span className="qty">
+                          {it.size && it.qty != null ? frac(amount) + (it.unit ? ' ' + it.unit : '') : fmtQty(it.qty, it.unit, itemFactor(it, factor))}
+                        </span>
                         <span>{it.item}</span>
                       </label>
                     </li>
@@ -152,7 +187,7 @@ export function RecipePage({ recipe: r, sectionName, canEdit, isFavorite, onTogg
         <section>
           <h2>Steps</h2>
           <ol className="steps">
-            {r.steps.map((s, i) => (
+            {scaled.steps.map((s, i) => (
               <li key={i}>
                 <div>
                   <div className="st">{s.title}</div>
@@ -184,7 +219,7 @@ export function RecipePage({ recipe: r, sectionName, canEdit, isFavorite, onTogg
         </section>
       </div>
 
-      {cooking && <CookMode recipe={r} onClose={() => setCooking(false)} />}
+      {cooking && <CookMode recipe={{ ...r, steps: scaled.steps }} onClose={() => setCooking(false)} />}
     </>
   )
 }

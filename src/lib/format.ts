@@ -29,9 +29,16 @@ export function mmss(s: number): string {
     : m + ':' + String(r).padStart(2, '0')
 }
 
-/** Timer label: 900 -> "15 min". */
+/** Timer label: 900 -> "15 min", 5400 -> "1½ hr", 3900 -> "1 hr 5 min". */
 export function timeLabel(s: number): string {
-  if (s >= 3600) return (s / 3600).toString().replace(/\.5$/, '½') + ' hr'
+  if (s >= 3600) {
+    const h = Math.floor(s / 3600)
+    const m = Math.round((s % 3600) / 60)
+    if (m === 0) return h + ' hr'
+    if (m === 30) return h + '½ hr'
+    if (m === 60) return h + 1 + ' hr'
+    return h + ' hr ' + m + ' min'
+  }
   if (s >= 60) return Math.round(s / 60) + ' min'
   return s + ' sec'
 }
