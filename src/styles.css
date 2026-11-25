@@ -72,6 +72,9 @@ code { font-family: var(--font-mono); font-size: .9em; background: var(--herb-so
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
 .stepper button { background: none; border: 0; width: 40px; height: 40px; font-size: 20px; color: var(--herb); }
 .stepper span { min-width: 92px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stepper.size span { padding: 0 4px; white-space: nowrap; }
+.stepper.size input { width: 4.2em; text-align: center; font: inherit; color: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); padding: 4px; }
+.stepper.size small { font-weight: 400; color: var(--muted); }
 .btn { border: 0; border-radius: 10px; background: var(--herb); color: var(--bg); padding: 10px 16px; font-weight: 600; }
 .btn.ghost { background: var(--herb-soft); color: var(--herb); }
 .btn.danger { background: var(--chili-soft); color: var(--chili); }

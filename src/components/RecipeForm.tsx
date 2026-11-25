@@ -4,6 +4,7 @@ import { insertRecipe, updateRecipe } from '../lib/api'
 import {
   ingredientsToText, parseIngredients, parseSteps, stepsToText, today, uniqueSlug,
 } from '../lib/parse'
+import { sizeItem } from '../lib/scale'
 import type { RecipeBoxData, Recipe, RecipeInput } from '../lib/types'
 import { go } from '../lib/useHash'
 
@@ -23,7 +24,7 @@ export function RecipeForm({ recipe: r, data, user, canEdit, onSaved }: Props) {
   const [time, setTime] = useState(r?.time ?? '')
   const [description, setDescription] = useState(r?.description ?? '')
   const [ingredients, setIngredients] = useState(r ? ingredientsToText(r.ingredients) : '')
-  const [steps, setSteps] = useState(r ? stepsToText(r.steps) : '')
+  const [steps, setSteps] = useState(r ? stepsToText(r.steps, sizeItem(r)?.unit) : '')
   const [notes, setNotes] = useState(r ? r.notes.join('\n') : '')
   const [tags, setTags] = useState(r ? r.tags.join(', ') : '')
   const [sourceUrl, setSourceUrl] = useState(r?.source_url ?? '')
@@ -79,6 +80,10 @@ export function RecipeForm({ recipe: r, data, user, canEdit, onSaved }: Props) {
     if (!cleanTitle) problems.push('Add a title.')
     if (!groups.length) problems.push('Add at least one ingredient.')
     if (!parsedSteps.length) problems.push('Add at least one step.')
+    const sized = groups.flatMap((g) => g.items).filter((it) => it.size)
+    if (sized.length > 1) problems.push('Only one ingredient can be marked [size].')
+    if (parsedSteps.some((s) => s.per_unit) && !sized.length)
+      problems.push('A step adds time per unit of size, so mark the ingredient it scales by with [size].')
     if (serves.trim() && !(+serves >= 1 && +serves <= 100))
       problems.push('Serves should be a number from 1 to 100, or left blank.')
     if (url && !/^https?:\/\//.test(url)) problems.push('The source link should start with http:// or https://.')
@@ -166,7 +171,11 @@ export function RecipeForm({ recipe: r, data, user, canEdit, onSaved }: Props) {
 
         <div className="field">
           <label htmlFor="f-ing">Ingredients</label>
-          <p className="hint">One per line, amount first. A line ending in a colon starts a group, like “Topping:”.</p>
+          <p className="hint">
+            One per line, amount first. A line ending in a colon starts a group, like “Topping:”. To scale the recipe by
+            one ingredient instead of servings (like a turkey's weight), end that line with “[size]”. End a line with
+            “[fixed]” for an amount that stays the same at any size.
+          </p>
           <textarea
             id="f-ing"
             value={ingredients}
@@ -179,7 +188,9 @@ export function RecipeForm({ recipe: r, data, user, canEdit, onSaved }: Props) {
           <label htmlFor="f-steps">Steps</label>
           <p className="hint">
             One step per line. Start with a short name and a colon if you like. End with a time in parentheses to
-            add a timer, like “(15 min)”.
+            add a timer, like “(15 min)”. For a recipe with a [size] ingredient, a timer can grow with the size, like
+            “(1 hr, +13 min per lb)”, and “&#123;size&#125;” or “&#123;time&#125;” in a step shows the current size or
+            that step's timer.
           </p>
           <textarea
             id="f-steps"

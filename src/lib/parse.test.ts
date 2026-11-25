@@ -70,5 +70,7 @@ describe('slugs and times', () => {
     expect(mmss(3700)).toBe('1h 01m')
     expect(timeLabel(900)).toBe('15 min')
     expect(timeLabel(5400)).toBe('1½ hr')
+    expect(timeLabel(7200)).toBe('2 hr')
+    expect(timeLabel(3900)).toBe('1 hr 5 min')
   })
 })

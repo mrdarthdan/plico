@@ -7,6 +7,7 @@
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { fmtQty, timeLabel } from './format'
+import { scaleRecipe, sizeItem } from './scale'
 import type { Group, Recipe, RecipeBoxData } from './types'
 
 export type PageSize = 'letter' | 'a4'
@@ -239,7 +240,9 @@ function drawRecipe(w: Writer, r: Recipe, sectionName: string) {
   if (r.steps.length) {
     w.heading('Steps')
     const indent = 24
-    r.steps.forEach((s, i) => {
+    // Steps at the recipe's own size, with {size} and {time} filled in.
+    const steps = scaleRecipe(r, sizeItem(r)?.qty ?? r.serves ?? 1).steps
+    steps.forEach((s, i) => {
       w.ensure(46)
       w.gap(6)
       const top = w.y

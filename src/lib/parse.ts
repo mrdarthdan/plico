@@ -34,6 +34,8 @@ export function parseAmount(tok: string): number | null {
 const AMOUNT_RE =
   /^((?:\d+\s+\d+\/\d+)|(?:\d+\/\d+)|(?:\d+(?:\.\d+)?\s*[½⅓⅔¼¾⅛⅜⅝⅞]?)|[½⅓⅔¼¾⅛⅜⅝⅞])\s*(.*)$/
 
+const FLAG_RE = /\s*\[\s*(size|fixed)\s*\]\s*$/i
+
 /** One ingredient per line, amount first. A line ending in ":" starts a group. */
 export function parseIngredients(text: string): Group[] {
   const groups: Group[] = []
@@ -41,6 +43,13 @@ export function parseIngredients(text: string): Group[] {
   for (let line of text.split('\n')) {
     line = line.replace(/^\s*[-•*]\s*/, '').trim()
     if (!line) continue
+    // "[size]" marks the ingredient the recipe scales by; "[fixed]" one that never scales.
+    let flag: { size?: boolean; fixed?: boolean } = {}
+    const fm = line.match(FLAG_RE)
+    if (fm && fm.index != null) {
+      flag = fm[1].toLowerCase() === 'size' ? { size: true } : { fixed: true }
+      line = line.slice(0, fm.index).trim()
+    }
     if (/:$/.test(line) && !/^\d/.test(line)) {
       if (cur.items.length || cur.name) groups.push(cur)
       cur = { name: line.slice(0, -1).trim(), items: [] }
@@ -57,18 +66,28 @@ export function parseIngredients(text: string): Group[] {
         rest = um[2]
       }
       if (amt != null && rest) {
-        cur.items.push({ qty: Math.round(amt * 1000) / 1000, unit, item: rest })
+        cur.items.push({ qty: Math.round(amt * 1000) / 1000, unit, item: rest, ...flag })
         continue
       }
     }
+    // An item with no amount can't be a size; it never scales anyway.
     cur.items.push({ qty: null, unit: '', item: line })
   }
   if (cur.items.length) groups.push(cur)
   return groups
 }
 
-const STEP_TIME_RE =
-  /\s*[([]\s*(\d+(?:\.\d+)?)\s*(sec|secs|seconds|min|mins|minutes|hr|hrs|hour|hours)\s*[)\]]\s*$/i
+const DUR = '(\\d+(?:\\.\\d+)?)\\s*(sec|secs|seconds|min|mins|minutes|hr|hrs|hour|hours)'
+// "(15 min)", or for a recipe scaled by size "(1 hr, +13 min per lb)"
+const STEP_TIME_RE = new RegExp(
+  '\\s*[(\\[]\\s*' + DUR + '(?:\\s*,?\\s*\\+\\s*' + DUR + '\\s*(?:per|/|each|a)\\s*[a-zA-Z.]+)?\\s*[)\\]]\\s*$',
+  'i',
+)
+
+function toSeconds(n: number, u: string): number {
+  u = u.toLowerCase()
+  return Math.round(u.startsWith('h') ? n * 3600 : u.startsWith('s') ? n : n * 60)
+}
 
 /** One step per line. Optional "Name: " prefix, optional "(15 min)" timer suffix. */
 export function parseSteps(text: string): Step[] {
@@ -79,11 +98,11 @@ export function parseSteps(text: string): Step[] {
     .filter(Boolean)
   lines.forEach((line, i) => {
     let seconds = 0
+    let perUnit = 0
     const tm = line.match(STEP_TIME_RE)
     if (tm && tm.index != null) {
-      const n = +tm[1]
-      const u = tm[2].toLowerCase()
-      seconds = Math.round(u.startsWith('h') ? n * 3600 : u.startsWith('s') ? n : n * 60)
+      seconds = toSeconds(+tm[1], tm[2])
+      if (tm[3]) perUnit = toSeconds(+tm[3], tm[4])
       line = line.slice(0, tm.index).trim()
     }
     let title = ''
@@ -94,7 +113,7 @@ export function parseSteps(text: string): Step[] {
       body = line.slice(c + 1).trim()
     }
     if (!title) title = 'Step ' + (i + 1)
-    out.push({ title, text: body || title, seconds })
+    out.push(perUnit ? { title, text: body || title, seconds, per_unit: perUnit } : { title, text: body || title, seconds })
   })
   return out
 }
@@ -105,25 +124,32 @@ export function ingredientsToText(groups: Group[]): string {
       (g) =>
         (g.name ? g.name + ':\n' : '') +
         g.items
-          .map((it) => (it.qty != null ? frac(it.qty) + (it.unit ? ' ' + it.unit : '') + ' ' : '') + it.item)
+          .map(
+            (it) =>
+              (it.qty != null ? frac(it.qty) + (it.unit ? ' ' + it.unit : '') + ' ' : '') +
+              it.item +
+              (it.size ? ' [size]' : it.fixed ? ' [fixed]' : ''),
+          )
           .join('\n'),
     )
     .join('\n\n')
 }
 
-export function stepsToText(steps: Step[]): string {
+function durText(secs: number): string {
+  return secs >= 3600 && secs % 1800 === 0
+    ? secs / 3600 + ' hr'
+    : secs >= 60
+      ? Math.round(secs / 60) + ' min'
+      : secs + ' sec'
+}
+
+/** `unit` is the size item's unit, used in "+13 min per lb". */
+export function stepsToText(steps: Step[], unit = ''): string {
   return steps
     .map((s) => {
       const secs = s.seconds || 0
-      const t = !secs
-        ? ''
-        : ' (' +
-          (secs >= 3600 && secs % 1800 === 0
-            ? secs / 3600 + ' hr'
-            : secs >= 60
-              ? Math.round(secs / 60) + ' min'
-              : secs + ' sec') +
-          ')'
+      const per = secs && s.per_unit ? ', +' + durText(s.per_unit) + ' per ' + (unit || 'unit') : ''
+      const t = !secs ? '' : ' (' + durText(secs) + per + ')'
       return (/^Step \d+$/.test(s.title) ? '' : s.title + ': ') + s.text + t
     })
     .join('\n')

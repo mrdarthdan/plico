@@ -5,6 +5,10 @@ export interface Item {
   qty: number | null
   unit: string
   item: string
+  /** The recipe scales by this item's amount (e.g. turkey weight) instead of servings. One per recipe. */
+  size?: boolean
+  /** Stays the same whatever the size (e.g. "1 onion for the cavity"). */
+  fixed?: boolean
 }
 export interface Group {
   name: string
@@ -13,8 +17,10 @@ export interface Group {
 export interface Step {
   title: string
   text: string
-  /** timer length; 0 for none */
+  /** timer length; 0 for none. For a recipe with a size item, the length at its base size. */
   seconds: number
+  /** Seconds added to the timer per unit of size above the base (taken off below it). */
+  per_unit?: number
 }
 
 export interface Recipe {
